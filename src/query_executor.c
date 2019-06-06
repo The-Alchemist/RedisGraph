@@ -165,7 +165,7 @@ AR_ExpNode** AST_BuildWithExpressions(AST *ast, const cypher_astnode_t *with_cla
         if (cypher_astnode_type(expr) == CYPHER_AST_IDENTIFIER) {
             // Retrieve "a" from "with a" or "with a AS e"
             identifier = cypher_ast_identifier_get_name(expr);
-            record_id = AST_GetEntityFromAlias(ast, (char*)identifier);
+            record_id = AST_GetEntityIDFromAlias(ast, identifier);
         }
 
         AR_ExpNode *exp = NULL;
@@ -180,11 +180,11 @@ AR_ExpNode** AST_BuildWithExpressions(AST *ast, const cypher_astnode_t *with_cla
         }
 
         // If the projection is aliased, add the alias to mappings and Record
-        char *alias = NULL;
+        const char *alias = NULL;
         const cypher_astnode_t *alias_node = cypher_ast_projection_get_alias(projection);
         if (alias_node) {
             // The projection either has an alias (AS) or is a function call.
-            alias = (char*)cypher_ast_identifier_get_name(alias_node);
+            alias = cypher_ast_identifier_get_name(alias_node);
 
             // Associate alias with the expression
             AST_AssociateAliasWithID(ast, alias, record_id);

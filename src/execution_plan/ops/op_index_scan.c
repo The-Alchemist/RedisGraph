@@ -38,7 +38,7 @@ Record IndexScanConsume(OpBase *opBase) {
   EntityID *nodeId = IndexIter_Next(op->iter);
   if (!nodeId) return NULL;
 
-  Record r = Record_New(opBase->record_len);
+  Record r = Record_New(opBase->record_map->record_len);
   // Get a pointer to a heap allocated node.
   Node *n = Record_GetNode(r, op->nodeRecIdx);
   // Update node's internal entity pointer.

@@ -85,7 +85,7 @@ Record OpNodeByIdSeekConsume(OpBase *opBase) {
     // TODO If we're replacing a label scan, the correct label can be populated now.
     n.label = NULL;
 
-    Record r = Record_New(opBase->record_len);
+    Record r = Record_New(opBase->record_map->record_len);
     Record_AddNode(r, op->nodeRecIdx, n);
     return r;
 }

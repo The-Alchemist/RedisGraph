@@ -53,7 +53,7 @@ Record NodeByLabelScanConsume(OpBase *opBase) {
     GxB_MatrixTupleIter_next(op->iter, NULL, &nodeId, &depleted);
     if(depleted) return NULL;
     
-    Record r = Record_New(opBase->record_len);
+    Record r = Record_New(opBase->record_map->record_len);
     // Get a pointer to a heap allocated node.
     Node *n = Record_GetNode(r, op->nodeRecIdx);
     // Update node's internal entity pointer.

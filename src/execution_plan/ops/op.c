@@ -12,7 +12,7 @@ void OpBase_Init(OpBase *op) {
     op->childCount = 0;
     op->children = NULL;
     op->parent = NULL;
-    op->record_len = 0;
+    op->record_map = NULL;
     
     // Function pointers.
     op->init = NULL;

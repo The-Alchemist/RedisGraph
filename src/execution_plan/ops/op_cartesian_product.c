@@ -63,7 +63,7 @@ static int _PullFromStreams(CartesianProduct *op) {
 
 OpResult CartesianProductInit(OpBase *opBase) {
     CartesianProduct *op = (CartesianProduct*)opBase;
-    op->r = Record_New(opBase->record_len);
+    op->r = Record_New(opBase->record_map->record_len);
     return OP_OK;
 }
 

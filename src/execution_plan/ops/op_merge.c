@@ -171,7 +171,7 @@ Record OpMergeConsume(OpBase *opBase) {
         if(op->matched) return r;
 
         // No previous match, create MERGE pattern.
-        r = Record_New(opBase->record_len);
+        r = Record_New(opBase->record_map->record_len);
         _CreateEntities(op, r);
         op->created = true;
     }

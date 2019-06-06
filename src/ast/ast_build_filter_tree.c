@@ -1,5 +1,6 @@
 #include "ast_build_filter_tree.h"
 #include "ast_shared.h"
+#include "../execution_plan/record_map.h"
 #include "../util/arr.h"
 
 // Forward declaration
@@ -90,7 +91,7 @@ FT_FilterNode* _convertComparison(const AST *ast, const cypher_astnode_t *compar
     return _CreatePredicateFilterNode(ast, op, lhs, rhs);
 }
 
-FT_FilterNode* _convertInlinedProperties(AST *ast, const cypher_astnode_t *entity, SchemaType type) {
+FT_FilterNode* _convertInlinedProperties(AST *ast, RecordMap *record_map, const cypher_astnode_t *entity, SchemaType type) {
     const cypher_astnode_t *props = NULL;
 
     if (type == SCHEMA_NODE) {
@@ -101,21 +102,18 @@ FT_FilterNode* _convertInlinedProperties(AST *ast, const cypher_astnode_t *entit
 
     if (!props) return NULL;
 
-    uint entity_id = AST_GetEntity(ast, entity);
-    assert (entity_id != NOT_IN_RECORD);
-    // if (entity_== NOT_IN_RECORD) {
-        // exp->record_idx = AST_AddAnonymousRecordEntry(ast);
-    // }
-    // Necessary for ID collection in 'modified' filter placement
-    // exp->operand.variadic.entity_alias_idx = exp->record_idx;
+    uint record_id = RecordMap_GetRecordIDFromReference(record_map, entity);
+    if (record_id == IDENTIFIER_NOT_FOUND) {
+        uint ast_id = AST_GetEntityIDFromReference(ast, entity);
+        record_id = RecordMap_FindOrAddASTEntity(record_map, ast, entity);
+    }
 
     FT_FilterNode *root = NULL;
     unsigned int nelems = cypher_ast_map_nentries(props);
     for (unsigned int i = 0; i < nelems; i ++) {
         // key is of type CYPHER_AST_PROP_NAME
         const char *prop = cypher_ast_prop_name_get_value(cypher_ast_map_get_key(props, i));
-        SchemaType entity_type = (i % 2) ? SCHEMA_EDGE : SCHEMA_NODE;
-        AR_ExpNode *lhs = AR_EXP_NewPropertyOperator(entity_id, prop, entity_type);
+        AR_ExpNode *lhs = AR_EXP_NewVariableFromID(record_id, prop);
 
         // val is of type CYPHER_AST_EXPRESSION
         const cypher_astnode_t *val = cypher_ast_map_get_value(props, i);
@@ -144,7 +142,7 @@ FT_FilterNode* _FilterNode_FromAST(const AST *ast, const cypher_astnode_t *expr)
     return NULL;
 }
 
-void _AST_ConvertFilters(AST *ast, FT_FilterNode **root, const cypher_astnode_t *entity) {
+void _AST_ConvertFilters(AST *ast, RecordMap *record_map, FT_FilterNode **root, const cypher_astnode_t *entity) {
     if (!entity) return;
 
     cypher_astnode_type_t type = cypher_astnode_type(entity);
@@ -152,9 +150,9 @@ void _AST_ConvertFilters(AST *ast, FT_FilterNode **root, const cypher_astnode_t 
     FT_FilterNode *node = NULL;
     // If the current entity is a node or edge pattern, capture its properties map (if any)
     if (type == CYPHER_AST_NODE_PATTERN) {
-        node = _convertInlinedProperties(ast, entity, SCHEMA_NODE);
+        node = _convertInlinedProperties(ast, record_map, entity, SCHEMA_NODE);
     } else if (type == CYPHER_AST_REL_PATTERN) {
-        node = _convertInlinedProperties(ast, entity, SCHEMA_EDGE);
+        node = _convertInlinedProperties(ast, record_map, entity, SCHEMA_EDGE);
     } else if (type == CYPHER_AST_COMPARISON) {
         node = _convertComparison(ast, entity);
     } else if (type == CYPHER_AST_BINARY_OPERATOR) {
@@ -167,25 +165,25 @@ void _AST_ConvertFilters(AST *ast, FT_FilterNode **root, const cypher_astnode_t 
         for(unsigned int i = 0; i < child_count; i++) {
             const cypher_astnode_t *child = cypher_astnode_get_child(entity, i);
             // Recursively continue searching
-            _AST_ConvertFilters(ast, root, child);
+            _AST_ConvertFilters(ast, record_map, root, child);
         }
     }
     if (node) _FT_Append(root, node);
 }
 
-FT_FilterNode* AST_BuildFilterTree(AST *ast) {
+FT_FilterNode* AST_BuildFilterTree(AST *ast, RecordMap *record_map) {
     FT_FilterNode *filter_tree = NULL;
     const cypher_astnode_t **match_clauses = AST_CollectReferencesInRange(ast, CYPHER_AST_MATCH);
     uint match_count = array_len(match_clauses);
     for (unsigned int i = 0; i < match_count; i ++) {
-        _AST_ConvertFilters(ast, &filter_tree, match_clauses[i]);
+        _AST_ConvertFilters(ast, record_map, &filter_tree, match_clauses[i]);
     }
     array_free(match_clauses);
 
     const cypher_astnode_t **merge_clauses = AST_CollectReferencesInRange(ast, CYPHER_AST_MERGE);
     uint merge_count = array_len(merge_clauses);
     for (unsigned int i = 0; i < merge_count; i ++) {
-        _AST_ConvertFilters(ast, &filter_tree, merge_clauses[i]);
+        _AST_ConvertFilters(ast, record_map, &filter_tree, merge_clauses[i]);
     }
     array_free(merge_clauses);
 

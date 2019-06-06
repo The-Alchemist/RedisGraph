@@ -4,61 +4,94 @@
  * This file is available under the Redis Labs Source Available License Agreement
  */
 
-#include "execution_plan.h"
+#include "record_map.h"
+#include "../util/rmalloc.h"
 
-// TODO can possibly be deleted
-uint ExecutionPlanSegment_GetRecordIDFromReference(ExecutionPlanSegment *segment, AST_IDENTIFIER entity) {
-    uint *id = TrieMap_Find(segment->record_map, (char*)&entity, sizeof(entity));
+uint* _BuildMapValue(uint id) {
+    // TODO so many unnecessary allocs
+    uint *id_ptr = rm_malloc(sizeof(uint));
+    *id_ptr = id;
+    return id_ptr;
+}
+
+uint RecordMap_GetRecordIDFromReference(RecordMap *record_map, AST_IDENTIFIER entity) {
+    uint *id = TrieMap_Find(record_map->map, (char*)&entity, sizeof(entity));
     if (id == TRIEMAP_NOTFOUND) return IDENTIFIER_NOT_FOUND;
     return *id;
 }
 
-uint ExecutionPlanSegment_ReferenceToRecordID(ExecutionPlanSegment *segment, AST_IDENTIFIER identifier) {
-    uint *id_ptr = TrieMap_Find(segment->record_map, (char*)&identifier, sizeof(identifier));
+uint RecordMap_ReferenceToRecordID(RecordMap *record_map, AST_IDENTIFIER identifier) {
+    uint *id_ptr = TrieMap_Find(record_map->map, (char*)&identifier, sizeof(identifier));
     if (id_ptr != TRIEMAP_NOTFOUND) return *id_ptr;
 
-    id_ptr = rm_malloc(sizeof(uint));
-    *id_ptr = segment->record_map->cardinality;
-    TrieMap_Add(segment->record_map, (char*)&identifier, sizeof(identifier), id_ptr, TrieMap_DONT_CARE_REPLACE);
+    uint id = record_map->record_len++;
+    id_ptr = _BuildMapValue(id);
+    TrieMap_Add(record_map->map, (char*)&identifier, sizeof(identifier), id_ptr, TrieMap_DONT_CARE_REPLACE);
 
     return *id_ptr;
 }
 
-uint ExecutionPlanSegment_ExpressionToRecordID(ExecutionPlanSegment *segment, AR_ExpNode *exp) {
-    uint *id_ptr = TrieMap_Find(segment->record_map, (char*)&exp, sizeof(AR_ExpNode));
-    if (id_ptr != TRIEMAP_NOTFOUND) return *id_ptr;
+// uint RecordMap_ExpressionToRecordID(RecordMap *record_map, AR_ExpNode *exp) {
+    // uint *id_ptr = TrieMap_Find(record_map->map, (char*)&exp, sizeof(AR_ExpNode));
+    // if (id_ptr != TRIEMAP_NOTFOUND) return *id_ptr;
 
-    uint id = IDENTIFIER_NOT_FOUND;
-    // If the expression contains an alias, map it first, and re-use its Record ID if one is already assigned
-    if (exp->type == AR_EXP_OPERAND && exp->operand.type == AR_EXP_VARIADIC && exp->operand.variadic.entity_alias) {
-        id = ExecutionPlanSegment_AliasToRecordID(segment, exp->operand.variadic.entity_alias, id);
-    }
+    // uint id = IDENTIFIER_NOT_FOUND;
+    // // If the expression contains an alias, map it first, and re-use its Record ID if one is already assigned
+    // if (exp->type == AR_EXP_OPERAND && exp->operand.type == AR_EXP_VARIADIC && exp->operand.variadic.entity_alias) {
+        // id = RecordMap_AliasToRecordID(record_map->map, exp->operand.variadic.entity_alias, id);
+    // }
 
-    if (id == IDENTIFIER_NOT_FOUND) id = segment->record_map->cardinality;
+    // if (id == IDENTIFIER_NOT_FOUND) id = record_map->map->cardinality;
 
-    id_ptr = rm_malloc(sizeof(uint));
-    *id_ptr = id;
-    TrieMap_Add(segment->record_map, (char*)&exp, sizeof(exp), id_ptr, TrieMap_DONT_CARE_REPLACE);
+    // id_ptr = rm_malloc(sizeof(uint));
+    // *id_ptr = id;
+    // TrieMap_Add(record_map->map, (char*)&exp, sizeof(exp), id_ptr, TrieMap_DONT_CARE_REPLACE);
 
-    return *id_ptr;
-}
+    // return *id_ptr;
+// }
 
-uint ExecutionPlanSegment_AliasToRecordID(ExecutionPlanSegment *segment, const char *alias, uint id) {
-    if (id == IDENTIFIER_NOT_FOUND) {
-        id = segment->record_map->cardinality;
-    }
-
-    uint *id_ptr = TrieMap_Find(segment->record_map, (char*)alias, strlen(alias));
-    if (id_ptr != TRIEMAP_NOTFOUND) return *id_ptr;
-
-    id_ptr = rm_malloc(sizeof(uint));
-    *id_ptr = id;
-    TrieMap_Add(segment->record_map, (char*)alias, strlen(alias), id_ptr, TrieMap_DONT_CARE_REPLACE);
+uint RecordMap_LookupAlias(RecordMap *record_map, const char *alias) {
+    uint *id_ptr = TrieMap_Find(record_map->map, (char*)alias, strlen(alias));
+    if (id_ptr == TRIEMAP_NOTFOUND) return IDENTIFIER_NOT_FOUND;
 
     return *id_ptr;
 }
 
-uint ExecutionPlanSegment_RecordLength(ExecutionPlanSegment *segment) {
-    return segment->record_len;
+uint RecordMap_FindOrAddASTEntity(RecordMap *record_map, const AST *ast, const cypher_astnode_t *entity) {
+    // Ensure this is a new entity
+    // assert(TrieMap_Find(record_map->map, (char*)&entity, sizeof(entity)) == TRIEMAP_NOTFOUND);
+
+    uint *id_ptr = TrieMap_Find(record_map->map, (char*)&entity, sizeof(entity));
+    if (id_ptr != TRIEMAP_NOTFOUND) return *id_ptr;
+
+    uint id = record_map->record_len++;
+
+    // Map AST ID
+    uint ast_id = AST_GetEntityIDFromReference(ast, entity);
+    id_ptr = _BuildMapValue(id);
+    TrieMap_Add(record_map->map, (char*)&ast_id, sizeof(ast_id), id_ptr, TrieMap_DONT_CARE_REPLACE);
+
+    // Map AST pointer
+    id_ptr = _BuildMapValue(id);
+    TrieMap_Add(record_map->map, (char*)&entity, sizeof(entity), id_ptr, TrieMap_DONT_CARE_REPLACE);
+
+    // Map alias?
+
+    // Map AR_ExpNode?
+
+    return id;
+}
+
+RecordMap *RecordMap_New() {
+    RecordMap *record_map = rm_malloc(sizeof(RecordMap));
+    record_map->map = NewTrieMap();
+    record_map->record_len = 0;
+
+    return record_map;
+}
+
+void RecordMap_Free(RecordMap *record_map) {
+    TrieMap_Free(record_map->map, NULL);
+    rm_free(record_map);
 }
 

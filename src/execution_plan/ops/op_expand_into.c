@@ -16,11 +16,10 @@
  * as a and b are already resolved to just need to see if they are 
  * connected via an e edge. */
 
-OpBase* NewExpandIntoOp(Node *a, Node *b, Edge *e) {
+OpBase* NewExpandIntoOp(RecordMap *record_map, Node *a, Node *b, Edge *e) {
     OpExpandInto *expandInto = malloc(sizeof(OpExpandInto));
-    AST *ast = AST_GetFromTLS();
-    expandInto->srcRecIdx = AST_GetAliasID(ast, a->alias);
-    expandInto->destRecIdx = AST_GetAliasID(ast, b->alias);
+    expandInto->srcRecIdx = RecordMap_LookupAlias(record_map, a->alias);
+    expandInto->destRecIdx = RecordMap_LookupAlias(record_map, b->alias);
     expandInto->gc = GraphContext_GetFromTLS();
     expandInto->e = e;
     expandInto->edges = array_new(Edge*, 0);

@@ -8,5 +8,6 @@
 
 #include "ast.h"
 #include "../filter_tree/filter_tree.h"
+#include "../execution_plan/record_map.h"
 
-FT_FilterNode* AST_BuildFilterTree(AST *ast);
+FT_FilterNode* AST_BuildFilterTree(AST *ast, RecordMap *record_map);

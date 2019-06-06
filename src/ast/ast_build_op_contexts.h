@@ -8,6 +8,7 @@
 
 #include "ast.h"
 #include "ast_shared.h"
+#include "../execution_plan/record_map.h"
 #include "../graph/query_graph.h"
 #include "../graph/entities/graph_entity.h"
 
@@ -43,10 +44,10 @@ void AST_PrepareDeleteOp(const cypher_astnode_t *delete_clause, uint **nodes_ref
 // AR_ExpNode** AST_PrepareSortOp(const cypher_astnode_t *order_clause, int *direction);
 int AST_PrepareSortOp(const cypher_astnode_t *order_clause);
 
-AST_UnwindContext AST_PrepareUnwindOp(const AST *ast, const cypher_astnode_t *unwind_clause);
+AST_UnwindContext AST_PrepareUnwindOp(RecordMap *record_map, const cypher_astnode_t *unwind_clause);
 
-AST_MergeContext AST_PrepareMergeOp(AST *ast, const cypher_astnode_t *merge_clause, QueryGraph *qg);
+AST_MergeContext AST_PrepareMergeOp(AST *ast, RecordMap *record_map, const cypher_astnode_t *merge_clause, QueryGraph *qg);
 
-AST_CreateContext AST_PrepareCreateOp(AST *ast, QueryGraph *qg);
+AST_CreateContext AST_PrepareCreateOp(AST *ast, RecordMap *record_map, QueryGraph *qg);
 
 // uint* AST_WithClauseModifies(AST *ast, const cypher_astnode_t *with_clause);

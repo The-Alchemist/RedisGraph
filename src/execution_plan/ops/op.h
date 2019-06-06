@@ -7,6 +7,7 @@
 #pragma once
 
 #include "../record.h"
+#include "../record_map.h"
 #include "../../redismodule.h"
 #include "../../graph/query_graph.h"
 #include "../../graph/entities/node.h"
@@ -70,8 +71,7 @@ struct OpBase {
     fpFree free;                   // Free operation.
     char *name;                    // Operation name.
     uint *modifies;                // List of Record indices this op modifies.
-    uint record_len;           // TODO might be accessible from owner, figure out abstraction 
-    struct ExecutionPlanSegment *owner;   // Segment this operation belongs to.
+    RecordMap *record_map;         // Mapping of entities into Record IDs in the scope of this ExecutionPlanSegment.
     struct OpBase **children;      // Child operations.
     int childCount;                // Number of children.
     struct OpBase *parent;         // Parent operations.

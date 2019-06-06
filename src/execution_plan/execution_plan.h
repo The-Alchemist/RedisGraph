@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include "record_map.h"
 #include "./ops/op.h"
 #include "../graph/graph.h"
 #include "../resultset/resultset.h"
@@ -26,7 +27,7 @@ typedef struct {
     FT_FilterNode *filter_tree;      // FilterTree containing filters to be applied to this segment.
     AR_ExpNode **projections;        // Expressions to be constructed for a WITH or RETURN clause.
     AR_ExpNode **order_expressions;  // Expressions to be constructed for an ORDER clause.
-    TrieMap *record_map;
+    RecordMap *record_map;
     uint record_len;                 // Length of Record being modified by this segment.
 } ExecutionPlanSegment;
 
@@ -88,9 +89,9 @@ ResultSet* ExecutionPlan_Execute(ExecutionPlan *plan);
 void ExecutionPlan_Free(ExecutionPlan *plan);
 
 // Mapping functions
-uint ExecutionPlanSegment_GetRecordIDFromReference(ExecutionPlanSegment *segment, AST_IDENTIFIER entity);
-uint ExecutionPlanSegment_ReferenceToRecordID(ExecutionPlanSegment *segment, AST_IDENTIFIER identifier);
-uint ExecutionPlanSegment_ExpressionToRecordID(ExecutionPlanSegment *segment, AR_ExpNode *exp);
-uint ExecutionPlanSegment_AliasToRecordID(ExecutionPlanSegment *segment, const char *alias, uint id);
+// uint ExecutionPlanSegment_GetRecordIDFromReference(ExecutionPlanSegment *segment, AST_IDENTIFIER entity);
+// uint ExecutionPlanSegment_ReferenceToRecordID(ExecutionPlanSegment *segment, AST_IDENTIFIER identifier);
+// uint ExecutionPlanSegment_ExpressionToRecordID(ExecutionPlanSegment *segment, AR_ExpNode *exp);
+// uint ExecutionPlanSegment_AliasToRecordID(ExecutionPlanSegment *segment, const char *alias, uint id);
 
 uint ExecutionPlanSegment_RecordLength(ExecutionPlanSegment *segment);

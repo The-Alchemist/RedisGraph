@@ -20,7 +20,7 @@ typedef struct {
     Edge **edges;       // Edges connecting source to destination.
 } OpExpandInto;
 
-OpBase* NewExpandIntoOp(Node *a, Node *b, Edge *e);
+OpBase* NewExpandIntoOp(RecordMap *record_map, Node *a, Node *b, Edge *e);
 Record OpExpandIntoConsume(OpBase *opBase);
 OpResult OpExpandIntoReset(OpBase *ctx);
 void OpExpandIntoFree(OpBase *ctx);

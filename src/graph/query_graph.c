@@ -23,18 +23,16 @@ static void _BuildQueryGraphAddNode(const GraphContext *gc,
                              const cypher_astnode_t *ast_entity,
                              QueryGraph *qg) {
 
-    // TODO would it be better to build the QG map of hashes? More consistent with AST,
-    // but requires accesses from elsewhere to hash first.
     Node *n = QueryGraph_GetEntityByASTRef(qg, ast_entity);
 
     // Node and AST entity already mapped, do nothing
     if (n) return;
 
     // Check if node has been mapped using a different AST entity
-    uint id = AST_GetEntity(ast, ast_entity);
+    uint id = AST_GetEntityIDFromReference(ast, ast_entity);
     const char *alias = NULL;
-    if (id != NOT_IN_RECORD) {
-        n = QueryGraph_GetEntityByRecordID(qg, id);
+    if (id != IDENTIFIER_NOT_FOUND) {
+        n = QueryGraph_GetEntityByASTID(qg, id);
         if (n) alias = n->alias;
     }
 
@@ -79,10 +77,10 @@ static void _BuildQueryGraphAddEdge(const GraphContext *gc,
     /* Check for duplications. */
     if (e) return;
 
-    uint id = AST_GetEntity(ast, ast_entity);
+    uint id = AST_GetEntityIDFromReference(ast, ast_entity);
     const char *alias = NULL;
     if (id != NOT_IN_RECORD) {
-        e = QueryGraph_GetEntityByRecordID(qg, id);
+        e = QueryGraph_GetEntityByASTID(qg, id);
         if (e) alias = e->alias;
     }
 
@@ -227,7 +225,7 @@ void* QueryGraph_GetEntityByASTRef(const QueryGraph *qg, const cypher_astnode_t 
     return ge;
 }
 
-void* QueryGraph_GetEntityByRecordID(const QueryGraph *qg, uint id) {
+void* QueryGraph_GetEntityByASTID(const QueryGraph *qg, uint id) {
     void *ge = TrieMap_Find(qg->ast_references, (void*)&id, sizeof(id));
     if (ge == TRIEMAP_NOTFOUND) return NULL;
     return ge;
