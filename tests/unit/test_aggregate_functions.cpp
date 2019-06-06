@@ -11,7 +11,6 @@ extern "C" {
 #endif
 
 #include "../../src/util/rmalloc.h"
-#include "../../src/query_executor.h"
 #include "../../src/arithmetic/agg_funcs.h"
 #include "../../src/execution_plan/record.h"
 #include "../../src/arithmetic/arithmetic_expression.h"

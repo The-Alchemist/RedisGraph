@@ -46,6 +46,8 @@ static void _BuildQueryGraphAddNode(const GraphContext *gc,
     } else {
         /* Create a new node, set its properties, and add it to the graph. */
         n = Node_New(label, alias);
+        // Add node pointer back into AST mapping using the same ID
+        AST_MapEntity(ast, n, id);
         _QueryGraph_AddASTRef(qg, ast_entity, (void*)n);
         // _QueryGraph_AddID(qg, id, (void*)n);
         qg->nodes = array_append(qg->nodes, n);
@@ -108,6 +110,8 @@ static void _BuildQueryGraphAddEdge(const GraphContext *gc,
     }
 
     e = Edge_New(src, dest, reltype, alias);
+    // Add edge pointer back into AST mapping using the same ID
+    AST_MapEntity(ast, e, id);
 
     //Set edge relation ID.
     if(reltype == NULL) {

@@ -19,6 +19,8 @@ void OpBase_Init(OpBase *op) {
     op->consume = NULL;
     op->reset = NULL;
     op->free = NULL;
+
+    op->record_map = NULL;
 }
 
 void OpBase_Reset(OpBase *op) {

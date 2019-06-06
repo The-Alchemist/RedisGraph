@@ -7,9 +7,9 @@
 #ifndef ALGEBRAIC_EXPRESSION_H
 #define ALGEBRAIC_EXPRESSION_H
 
+#include "../execution_plan/record_map.h"
 #include "../graph/query_graph.h"
 #include "../graph/graph.h"
-#include "../ast/ast.h"
 
 // Matrix, vector operations.
 typedef enum {
@@ -70,13 +70,10 @@ typedef struct {
     Edge *edge;                             // Edge represented by sole operand.
     unsigned int minHops;
     unsigned int maxHops;
-    unsigned int src_node_idx; // TODO don't love these, but need the values for building traverse/scan ops
-    unsigned int dest_node_idx;
-    unsigned int edge_idx;
 } AlgebraicExpression;
 
 /* Construct an algebraic expression from a path. */
-AlgebraicExpression **AlgebraicExpression_FromPath(const AST *ast, const QueryGraph *q, const cypher_astnode_t *path, size_t *exp_count);
+AlgebraicExpression **AlgebraicExpression_FromPath(RecordMap *record_map, const QueryGraph *q, const cypher_astnode_t *path, size_t *exp_count);
 
 /* Executes given expression. */
 void AlgebraicExpression_Execute(AlgebraicExpression *ae, GrB_Matrix res);
@@ -93,8 +90,6 @@ void AlgebraicExpression_RemoveTerm(AlgebraicExpression *ae, int idx, AlgebraicE
 /* Whenever we decide to transpose an expression, call this function
  * directly accessing expression transpose flag is forbidden. */
 void AlgebraicExpression_Transpose(AlgebraicExpression *ae);
-
-void AlgebraicExpression_ExtendRecord(AlgebraicExpression *ae);
 
 void AlgebraicExpression_Free(AlgebraicExpression* ae);
 

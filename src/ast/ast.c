@@ -121,9 +121,12 @@ void _AST_BuildEntityMap(AST *ast) {
     for (uint i = 0; i < clause_count; i ++) {
         const cypher_astnode_t *clause = cypher_ast_query_get_clause(ast->root, i);
         cypher_astnode_type_t type = cypher_astnode_type(clause);
-        if (type == CYPHER_AST_MATCH || type == CYPHER_AST_CREATE) {
+        if (type == CYPHER_AST_MATCH) {
             // MATCH and CREATE clauses have 1 pattern which contains 1 or more paths.
             _AST_MapPattern(ast, cypher_ast_match_get_pattern(clause));
+        } else if (type == CYPHER_AST_CREATE) {
+            // MATCH and CREATE clauses have 1 pattern which contains 1 or more paths.
+            _AST_MapPattern(ast, cypher_ast_create_get_pattern(clause));
         } else if (type == CYPHER_AST_MERGE) {
             // MERGE clauses contain exactly one path.
             _AST_MapPath(ast, cypher_ast_merge_get_pattern_path(clause));
@@ -134,6 +137,8 @@ void _AST_BuildEntityMap(AST *ast) {
         } else if (type == CYPHER_AST_WITH) {
             // WITH introduces 1 or more aliases and refers to earlier entities.
 
+        } else if (type == CYPHER_AST_RETURN) {
+        
         } else {
             // TODO probably unsafe
             uint child_count = cypher_astnode_nchildren(clause);
@@ -349,7 +354,7 @@ AST* AST_Build(cypher_parse_result_t *parse_result) {
     AST *ast = rm_malloc(sizeof(AST));
     ast->root = AST_GetBody(parse_result);
     assert(ast->root);
-    ast->entity_map = NULL;
+    _AST_BuildEntityMap(ast);
 
     return ast;
 }
@@ -415,6 +420,17 @@ bool AST_ClauseContainsAggregation(const cypher_astnode_t *clause) {
     TrieMap_Free(referred_funcs, TrieMap_NOP_CB);
 
     return aggregated;
+}
+
+AST_Validation AST_PerformValidations(RedisModuleCtx *ctx, const AST *ast) {
+    char *reason;
+    AST_Validation res = AST_Validate(ast, &reason);
+    if (res != AST_VALID) {
+        RedisModule_ReplyWithError(ctx, reason);
+        free(reason);
+        return AST_INVALID;
+    }
+    return AST_VALID;
 }
 
 AST* AST_GetFromTLS(void) {

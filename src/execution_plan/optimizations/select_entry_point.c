@@ -10,8 +10,8 @@
 void selectEntryPoint(AlgebraicExpression *ae, const FT_FilterNode *tree) {
     uint *modifies = FilterTree_CollectModified(tree);
     uint modifiesCount = array_len(modifies);
-    uint dest_idx = ae->dest_node_idx;
-    uint src_idx = ae->src_node_idx;
+    // uint dest_idx = ae->dest_node_idx;
+    // uint src_idx = ae->src_node_idx;
 
     bool srcFiltered = false;
     bool destFiltered = false;
@@ -21,11 +21,11 @@ void selectEntryPoint(AlgebraicExpression *ae, const FT_FilterNode *tree) {
     // See if either source or destination nodes are filtered.
     for(uint i = 0; i < modifiesCount; i++) {
         uint id = modifies[i];
-        srcFiltered = (id == src_idx);
-        if(srcFiltered) goto cleanup;
+        // srcFiltered = (id == src_idx);
+        // if(srcFiltered) goto cleanup;
 
         // See if dest is filtered.
-        if(!destFiltered) destFiltered = (id == dest_idx);
+        // if(!destFiltered) destFiltered = (id == dest_idx);
     }
 
     /* Prefer filter over label 

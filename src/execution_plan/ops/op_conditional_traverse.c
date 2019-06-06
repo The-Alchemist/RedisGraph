@@ -43,7 +43,7 @@ void _traverse(CondTraverse *op) {
     GrB_Matrix_clear(op->F);
 }
 
-OpBase* NewCondTraverseOp(Graph *g, AlgebraicExpression *ae, uint records_cap) {
+OpBase* NewCondTraverseOp(Graph *g, AlgebraicExpression *ae, uint src_node_idx, uint dest_node_idx, uint edge_idx, uint records_cap) {
     CondTraverse *traverse = calloc(1, sizeof(CondTraverse));
     traverse->graph = g;
     traverse->ae = ae;
@@ -53,8 +53,9 @@ OpBase* NewCondTraverseOp(Graph *g, AlgebraicExpression *ae, uint records_cap) {
     traverse->edges = NULL;
     traverse->r = NULL;
 
-    traverse->srcNodeIdx = ae->src_node_idx;
-    traverse->destNodeIdx = ae->dest_node_idx;
+    traverse->srcNodeIdx = src_node_idx;
+    traverse->destNodeIdx = dest_node_idx;
+    traverse->edgeRecIdx = edge_idx;
 
     traverse->recordsLen = 0;
     traverse->transposed_edge = false;
@@ -73,15 +74,13 @@ OpBase* NewCondTraverseOp(Graph *g, AlgebraicExpression *ae, uint records_cap) {
     traverse->op.reset = CondTraverseReset;
     traverse->op.free = CondTraverseFree;
     traverse->op.modifies = array_new(uint, 1);
-    traverse->op.modifies = array_append(traverse->op.modifies, ae->dest_node_idx);
+    traverse->op.modifies = array_append(traverse->op.modifies, dest_node_idx);
 
     if(ae->edge) {
         traverse->edgeRelationTypes = traverse->ae->relation_ids;
         traverse->edgeRelationCount = array_len(traverse->edgeRelationTypes);
-        uint id = traverse->ae->edge_idx;
-        if (id != NOT_IN_RECORD) traverse->op.modifies = array_append(traverse->op.modifies, id);
+        traverse->op.modifies = array_append(traverse->op.modifies, edge_idx);
         traverse->edges = array_new(Edge, 32);
-        traverse->edgeRecIdx = ae->edge_idx;
     }
 
     return (OpBase*)traverse;

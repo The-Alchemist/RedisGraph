@@ -8,7 +8,6 @@
 #include "../value.h"
 #include "../util/arr.h"
 #include "../util/rmalloc.h"
-#include "../query_executor.h"
 #include "../grouping/group_cache.h"
 #include "../arithmetic/aggregate.h"
 
@@ -141,7 +140,7 @@ ResultSet* NewResultSet(RedisModuleCtx *ctx, bool distinct, bool compact) {
 
 // Initialize the user-facing reply arrays.
 void ResultSet_ReplyWithPreamble(ResultSet *set, AR_ExpNode **exps) {
-    if (exps == NULL) {
+    if (exps == NULL || array_len(exps) == 0) {
         // Queries that don't form result sets will only emit statistics
         RedisModule_ReplyWithArray(set->ctx, 1);
         return;

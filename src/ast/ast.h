@@ -9,10 +9,12 @@
 
 // #include "/ast_shared.h"
 #include "../value.h"
+#include "../redismodule.h"
 #include "../util/triemap/triemap.h"
 #include "../../deps/libcypher-parser/lib/src/cypher-parser.h"
 
-typedef const cypher_astnode_t* AST_IDENTIFIER;
+// typedef const cypher_astnode_t* AST_IDENTIFIER;
+typedef const void* AST_IDENTIFIER;
 
 #define NOT_IN_RECORD UINT_MAX // TODO delete
 
@@ -88,7 +90,9 @@ uint AST_MapEntity(const AST *ast, AST_IDENTIFIER identifier, uint id);
 
 uint AST_MapAlias(const AST *ast, const char *alias);
 
-// void AST_AssociateAliasWithID(const AST *ast, const char *alias, uint id);
+
+
+AST_Validation AST_PerformValidations(RedisModuleCtx *ctx, const AST *ast);
 
 AST* AST_GetFromTLS(void);
 

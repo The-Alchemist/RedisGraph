@@ -7,7 +7,6 @@
 #include <assert.h>
 #include "../value.h"
 #include "filter_tree.h"
-#include "../query_executor.h"
 #include "../util/arr.h"
 
 static inline FT_FilterNode* LeftChild(const FT_FilterNode *node) { return node->cond.left; }

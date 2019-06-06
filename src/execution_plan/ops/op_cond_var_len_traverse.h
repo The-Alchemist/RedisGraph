@@ -28,7 +28,7 @@ typedef struct {
     Record r;
 } CondVarLenTraverse;
 
-OpBase* NewCondVarLenTraverseOp(AlgebraicExpression *ae, unsigned int minHops, unsigned int maxHops, Graph *g);
+OpBase* NewCondVarLenTraverseOp(AlgebraicExpression *ae, uint minHops, uint maxHops, uint src_node_idx, uint dest_node_idx, Graph *g);
 Record CondVarLenTraverseConsume(OpBase *opBase);
 OpResult CondVarLenTraverseReset(OpBase *ctx);
 void CondVarLenTraverseFree(OpBase *ctx);

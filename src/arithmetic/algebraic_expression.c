@@ -55,15 +55,12 @@ AlgebraicExpression *_AE_MUL(size_t operand_cap) {
     return ae;
 }
 
-AlgebraicExpression* _NewAlgebraicExpression(uint operand_count, Node *src, Node *dest, Edge *e, uint src_idx, uint dest_idx, uint edge_idx) {
+AlgebraicExpression* _NewAlgebraicExpression(uint operand_count, Node *src, Node *dest, Edge *e) {
     AlgebraicExpression *exp = _AE_MUL(operand_count);
     exp->operand_count = 0;
     exp->src_node = src;
     exp->dest_node = dest;
     exp->edge = e;
-    exp->src_node_idx = src_idx;
-    exp->dest_node_idx = dest_idx;
-    exp->edge_idx = edge_idx;
 
     return exp;
 }
@@ -73,9 +70,6 @@ AlgebraicExpression* _CloneAlgebraicExpression(const AlgebraicExpression *orig) 
     clone->src_node = orig->src_node;
     clone->dest_node = orig->dest_node;
     clone->edge = orig->edge;
-    clone->src_node_idx = orig->src_node_idx;
-    clone->dest_node_idx = orig->dest_node_idx;
-    clone->edge_idx = orig->edge_idx;
     clone->minHops = orig->minHops;
     clone->maxHops = orig->maxHops;
     clone->relation_ids = orig->relation_ids;
@@ -108,7 +102,7 @@ AlgebraicExpression** _AlgebraicExpression_IsolateVariableLenExps(AlgebraicExpre
         AlgebraicExpression_RemoveTerm(exp, 0, &op);
 
         /* Create a new expression. */
-        AlgebraicExpression *newExp = _NewAlgebraicExpression(1, exp->src_node, NULL, NULL, exp->src_node_idx, NOT_IN_RECORD, NOT_IN_RECORD);
+        AlgebraicExpression *newExp = _NewAlgebraicExpression(1, exp->src_node, NULL, NULL);
         newExp->op = AL_EXP_UNARY; // Mark that this expression should be replaced by a scan or reduce op
         AlgebraicExpression_PrependTerm(newExp, op.operand, op.transpose, op.free);
         res[newExpCount++] = newExp;
@@ -140,7 +134,7 @@ AlgebraicExpression** _AlgebraicExpression_IsolateVariableLenExps(AlgebraicExpre
             } else {
                 // The destination is being placed in the source field
                 // AlgebraicExpression *newExp = _NewAlgebraicExpression(1, NULL, exp->dest_node, NULL, NOT_IN_RECORD, exp->dest_node_idx, NOT_IN_RECORD);
-                AlgebraicExpression *newExp = _NewAlgebraicExpression(1, exp->dest_node, NULL, NULL, exp->dest_node_idx, NOT_IN_RECORD, NOT_IN_RECORD);
+                AlgebraicExpression *newExp = _NewAlgebraicExpression(1, exp->dest_node, NULL, NULL);
                 newExp->op = AL_EXP_UNARY;
                 AlgebraicExpression_PrependTerm(newExp, op.operand, op.transpose, op.free);
                 res[newExpCount++] = newExp;
@@ -155,7 +149,7 @@ AlgebraicExpression** _AlgebraicExpression_IsolateVariableLenExps(AlgebraicExpre
 
 /* Break down expression into sub expressions.
  * considering referenced intermediate nodes and edges. */
-AlgebraicExpression **_AlgebraicExpression_Intermediate_Expressions(const AST *ast, AlgebraicExpression *exp, const cypher_astnode_t *path, const QueryGraph *q, size_t *exp_count) {
+AlgebraicExpression **_AlgebraicExpression_Intermediate_Expressions(RecordMap *record_map, AlgebraicExpression *exp, const cypher_astnode_t *path, const QueryGraph *q, size_t *exp_count) {
     /* Allocating maximum number of expression possible. */
     AlgebraicExpression **expressions = malloc(sizeof(AlgebraicExpression *) * exp->operand_count);
     int expIdx = 0;     // Sub expression index.
@@ -169,8 +163,6 @@ AlgebraicExpression **_AlgebraicExpression_Intermediate_Expressions(const AST *a
     AlgebraicExpression *iexp = _AE_MUL(exp->operand_count);
     iexp->src_node = exp->src_node;
     iexp->dest_node = exp->dest_node;
-    iexp->src_node_idx = exp->src_node_idx;
-    iexp->dest_node_idx = exp->dest_node_idx;
     iexp->operand_count = 0;
     expressions[expIdx++] = iexp;
 
@@ -182,14 +174,11 @@ AlgebraicExpression **_AlgebraicExpression_Intermediate_Expressions(const AST *a
         e = QueryGraph_GetEntityByASTRef(q, ast_rel);
         transpose = (cypher_ast_rel_pattern_get_direction(ast_rel) == CYPHER_REL_INBOUND);
 
-        uint edge_idx = AST_GetEntityIDFromReference(ast, ast_rel);
+        uint edge_idx = RecordMap_LookupEntity(record_map, ast_rel);
         /* If edge is referenced, set expression edge pointer. */
-        if (edge_idx != NOT_IN_RECORD) { // TODO referenced edges must be mapped prior to building AlgebraicExpression
+        if (edge_idx != IDENTIFIER_NOT_FOUND) { // TODO referenced edges must be mapped prior to building AlgebraicExpression
             iexp->edge = e;
             iexp->relation_ids = _setup_traversed_relations(ast_rel);
-            iexp->edge_idx = edge_idx;
-        } else {
-            iexp->edge_idx = NOT_IN_RECORD;
         }
 
         /* If this is a variable length edge, which is not fixed in length
@@ -213,7 +202,6 @@ AlgebraicExpression **_AlgebraicExpression_Intermediate_Expressions(const AST *a
         }
 
         if (transpose) {
-            // TODO seemingly no need to modify record IDs
             dest = e->src;
             src = e->dest;
         } else {
@@ -236,13 +224,12 @@ AlgebraicExpression **_AlgebraicExpression_Intermediate_Expressions(const AST *a
         // Don't build intermediate expression for non-intermediate nodes (not first or last)
         if (intermediate_node(i + 1, nelems) == false) continue;
 
-        dest_node_idx = AST_GetEntityRecordIdx(ast, cypher_ast_pattern_path_get_element(path, i + 1));
+        dest_node_idx = RecordMap_LookupEntity(record_map, cypher_ast_pattern_path_get_element(path, i + 1));
         // Don't build intermediate expression if destination node is not referenced
         if (dest_node_idx == NOT_IN_RECORD) continue;
 
         // Finalize current expression.
         iexp->dest_node = dest;
-        iexp->dest_node_idx = dest_node_idx;
 
 
         /* Create a new algebraic expression. */
@@ -250,7 +237,6 @@ AlgebraicExpression **_AlgebraicExpression_Intermediate_Expressions(const AST *a
         iexp = _CloneAlgebraicExpression(exp); // TODO delete this function
         // New expression's source is the previous expression's destination
         iexp->src_node = prev_exp->dest_node;
-        iexp->src_node_idx = prev_exp->dest_node_idx;
         expressions[expIdx++] = iexp;
     }
 
@@ -320,7 +306,7 @@ void AlgebraicExpression_PrependTerm(AlgebraicExpression *ae, GrB_Matrix m, bool
     ae->operands[0].operand = m;
 }
 
-AlgebraicExpression **AlgebraicExpression_FromPath(const AST *ast, const QueryGraph *q, const cypher_astnode_t *path, size_t *exp_count) {
+AlgebraicExpression **AlgebraicExpression_FromPath(RecordMap *record_map, const QueryGraph *q, const cypher_astnode_t *path, size_t *exp_count) {
     uint edge_count = array_len(q->edges);
     uint node_count = array_len(q->nodes);
     assert(edge_count != 0);
@@ -332,9 +318,6 @@ AlgebraicExpression **AlgebraicExpression_FromPath(const AST *ast, const QueryGr
     Edge *e = NULL;
 
     uint nelems = cypher_ast_pattern_path_nelements(path);
-
-    exp->src_node_idx = AST_GetEntityRecordIdx(ast, cypher_ast_pattern_path_get_element(path, 0));
-    exp->dest_node_idx = AST_GetEntityRecordIdx(ast, cypher_ast_pattern_path_get_element(path, nelems - 1));
 
     const cypher_astnode_t *ast_rel = NULL;
     // Scan relations in MATCH clause from left to right.
@@ -352,12 +335,10 @@ AlgebraicExpression **AlgebraicExpression_FromPath(const AST *ast, const QueryGr
         if(transpose) {
             dest = e->src;
             src = e->dest;
-            // TODO I don't think record IDs need to be set
         }
 
         if(exp->operand_count == 0) {
             exp->src_node = src;
-            // TODO I don't think src_node_idx needs to be set
             if(src->label) {
                 GrB_Matrix srcMat = Node_GetMatrix(src);
                 AlgebraicExpression_AppendTerm(exp, srcMat, false, false);
@@ -418,7 +399,7 @@ AlgebraicExpression **AlgebraicExpression_FromPath(const AST *ast, const QueryGr
     }
 
     exp->dest_node = dest;
-    AlgebraicExpression **expressions = _AlgebraicExpression_Intermediate_Expressions(ast, exp, path, q, exp_count);
+    AlgebraicExpression **expressions = _AlgebraicExpression_Intermediate_Expressions(record_map, exp, path, q, exp_count);
     expressions = _AlgebraicExpression_IsolateVariableLenExps(expressions, exp_count);
     // TODO memory leak (fails on [a|b] relations?)
     // AlgebraicExpression_Free(exp);
@@ -527,10 +508,6 @@ void AlgebraicExpression_Transpose(AlgebraicExpression *ae) {
     Node *n = ae->src_node;
     ae->src_node = ae->dest_node;
     ae->dest_node = n;
-    // TODO correct?
-    uint tmp_idx = ae->src_node_idx;
-    ae->src_node_idx = ae->dest_node_idx;
-    ae->dest_node_idx = tmp_idx;
 
     _AlgebraicExpression_ReverseOperandOrder(ae);
 
@@ -755,22 +732,6 @@ static GrB_Matrix _AlgebraicExpression_Eval(AlgebraicExpressionNode *exp, GrB_Ma
 
 void AlgebraicExpression_Eval(AlgebraicExpressionNode *exp, GrB_Matrix res) {
     _AlgebraicExpression_Eval(exp, res);
-}
-
-void AlgebraicExpression_ExtendRecord(AlgebraicExpression *ae) {
-    AST *ast = AST_GetFromTLS();
-    if (ae->src_node_idx == NOT_IN_RECORD) {
-        // Anonymous node - make space for it in the Record
-        ae->src_node_idx = AST_AddAnonymousRecordEntry(ast);
-    }
-
-    if (ae->dest_node_idx == NOT_IN_RECORD) {
-        ae->dest_node_idx = AST_AddAnonymousRecordEntry(ast);
-    }
-
-    if (ae->edge && ae->edge_idx == NOT_IN_RECORD) {
-        ae->edge_idx = AST_AddAnonymousRecordEntry(ast);
-    }
 }
 
 static void _AlgebraicExpressionNode_UniqueNodes(AlgebraicExpressionNode *root, AlgebraicExpressionNode ***uniqueNodes) {

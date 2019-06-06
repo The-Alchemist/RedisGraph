@@ -8,7 +8,6 @@
 #include "cmd_context.h"
 #include "../graph/graph.h"
 #include "../ast/ast.h"
-#include "../query_executor.h"
 #include "../util/simple_timer.h"
 #include "../execution_plan/execution_plan.h"
 #include "../util/arr.h"

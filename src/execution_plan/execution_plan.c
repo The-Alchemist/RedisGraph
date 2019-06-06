@@ -11,7 +11,6 @@
 #include "../util/rmalloc.h"
 #include "../util/arr.h"
 #include "../util/vector.h"
-#include "../query_executor.h"
 #include "../graph/entities/edge.h"
 #include "./optimizations/optimizer.h"
 #include "./optimizations/optimizations.h"
@@ -138,6 +137,49 @@ AR_ExpNode** _BuildReturnExpressions(AST *ast, ExecutionPlanSegment *segment, co
     return return_expressions;
 }
 
+AR_ExpNode** _BuildWithExpressions(AST *ast, ExecutionPlanSegment *segment, const cypher_astnode_t *with_clause) {
+    uint count = cypher_ast_with_nprojections(with_clause);
+    AR_ExpNode **with_expressions = array_new(AR_ExpNode*, count);
+    for (uint i = 0; i < count; i++) {
+        const cypher_astnode_t *projection = cypher_ast_with_get_projection(with_clause, i);
+        const cypher_astnode_t *ast_exp = cypher_ast_projection_get_expression(projection);
+
+        // Retrieve the AST ID of the entity
+        uint ast_id = AST_GetEntityIDFromReference(ast, ast_exp);
+        uint record_id = RecordMap_ReferenceToRecordID(segment->record_map, ast_exp);
+
+        // Construction an AR_ExpNode to represent this entity.
+        AR_ExpNode *exp = AR_EXP_FromExpression(ast, ast_exp);
+        // Add it to the segment's projections.
+        segment->projections = array_append(segment->projections, exp);
+
+        // If the projection is aliased, add the alias to mappings and Record
+        const char *alias = NULL;
+        const cypher_astnode_t *alias_node = cypher_ast_projection_get_alias(projection);
+        if (alias_node) {
+            // The projection either has an alias (AS) or is a function call.
+            alias = cypher_ast_identifier_get_name(alias_node);
+            // TODO ?
+            // RecordMap_LookupAlias(segment->record_map, alias);
+        } else {
+            const cypher_astnode_t *ast_exp = cypher_ast_projection_get_expression(projection);
+            const char *identifier = NULL;
+            if (cypher_astnode_type(ast_exp) == CYPHER_AST_IDENTIFIER) {
+                // Retrieve "a" from "RETURN a" or "RETURN a AS e"
+                identifier = cypher_ast_identifier_get_name(ast_exp);
+            } else {
+                assert(false);
+            }
+            exp->operand.variadic.entity_alias = identifier;
+            exp->operand.variadic.entity_alias_idx = record_id;
+        }
+        with_expressions = array_append(with_expressions, exp);
+    }
+
+    return with_expressions;
+
+}
+
 /* Given an AST path, construct a series of scans and traversals to model it. */
 void _ExecutionPlanSegment_BuildTraversalOps(ExecutionPlanSegment *segment, QueryGraph *qg, FT_FilterNode *ft, const cypher_astnode_t *path, Vector *traversals) {
     GraphContext *gc = GraphContext_GetFromTLS();
@@ -161,7 +203,7 @@ void _ExecutionPlanSegment_BuildTraversalOps(ExecutionPlanSegment *segment, Quer
 
     // This path must be expressed with one or more traversals.
     size_t expCount = 0;
-    AlgebraicExpression **exps = AlgebraicExpression_FromPath(ast, qg, path, &expCount);
+    AlgebraicExpression **exps = AlgebraicExpression_FromPath(segment->record_map, qg, path, &expCount);
 
     TRAVERSE_ORDER order;
     if (exps[0]->op == AL_EXP_UNARY) {
@@ -169,12 +211,13 @@ void _ExecutionPlanSegment_BuildTraversalOps(ExecutionPlanSegment *segment, Quer
         // be replaced by a label scan. (This can be the case after building a
         // variable-length traversal like MATCH (a)-[*]->(b:labeled)
         AlgebraicExpression *to_replace = exps[0];
-        if (to_replace->src_node_idx == NOT_IN_RECORD) {
-            // Anonymous node - make space for it in the Record
-            // TODO
-            // to_replace->src_node_idx = ExecutionPlanSegment_GetRecordIDFromReference(ast, exps[0]->src_node);
-        }
-        op = NewNodeByLabelScanOp(to_replace->src_node, to_replace->src_node_idx);
+
+        // Retrieve the AST ID for the source node
+        uint ast_id = AST_GetEntityIDFromReference(ast, exps[0]->src_node);
+        // Convert to a Record ID
+        uint record_id = RecordMap_FindOrAddID(segment->record_map, ast_id);
+
+        op = NewNodeByLabelScanOp(to_replace->src_node, record_id);
         Vector_Push(traversals, op);
         AlgebraicExpression_Free(to_replace);
         for (uint q = 1; q < expCount; q ++) {
@@ -184,12 +227,12 @@ void _ExecutionPlanSegment_BuildTraversalOps(ExecutionPlanSegment *segment, Quer
         order = TRAVERSE_ORDER_FIRST;
     } else if (exps[expCount - 1]->op == AL_EXP_UNARY) {
         AlgebraicExpression *to_replace = exps[expCount - 1];
-        if (to_replace->src_node_idx == NOT_IN_RECORD) {
-            // Anonymous node - make space for it in the Record
-            // TODO
-            // to_replace->src_node_idx = AST_AddAnonymousRecordEntry(ast);
-        }
-        op = NewNodeByLabelScanOp(to_replace->src_node, to_replace->src_node_idx);
+
+        // Retrieve the AST ID for the source node
+        uint ast_id = AST_GetEntityIDFromReference(ast, exps[0]->src_node);
+        // Convert to a Record ID
+        uint record_id = RecordMap_FindOrAddID(segment->record_map, ast_id);
+        op = NewNodeByLabelScanOp(to_replace->src_node, record_id);
         Vector_Push(traversals, op);
         AlgebraicExpression_Free(to_replace);
         expCount --;
@@ -203,39 +246,55 @@ void _ExecutionPlanSegment_BuildTraversalOps(ExecutionPlanSegment *segment, Quer
             // We haven't already built the appropriate label scan
             AlgebraicExpression *exp = exps[0];
             selectEntryPoint(exp, ft);
-            if (exp->src_node_idx == NOT_IN_RECORD) {
-                // Anonymous node - make space for it in the Record
-                // TODO
-                // exp->src_node_idx = AST_AddAnonymousRecordEntry(ast);
-            }
+
+            // Retrieve the AST ID for the source node
+            uint ast_id = AST_GetEntityIDFromReference(ast, exps[0]->src_node);
+            // Convert to a Record ID
+            uint record_id = RecordMap_FindOrAddID(segment->record_map, ast_id);
 
             // Create SCAN operation.
             if(exp->src_node->label) {
                 /* There's no longer need for the last matrix operand
                  * as it's been replaced by label scan. */
                 AlgebraicExpression_RemoveTerm(exp, exp->operand_count-1, NULL);
-                op = NewNodeByLabelScanOp(exp->src_node, exp->src_node_idx);
+                op = NewNodeByLabelScanOp(exp->src_node, record_id);
                 Vector_Push(traversals, op);
             } else {
-                op = NewAllNodeScanOp(gc->g, exp->src_node, exp->src_node_idx);
+                op = NewAllNodeScanOp(gc->g, exp->src_node, record_id);
                 Vector_Push(traversals, op);
             }
         }
         for(int i = 0; i < expCount; i++) {
             if(exps[i]->operand_count == 0) continue;
-            // TODO tmp
+            uint ast_id;
+            uint src_node_idx;
+            uint dest_node_idx;
+            uint edge_idx = IDENTIFIER_NOT_FOUND;
             if (exps[i]->op == AL_EXP_UNARY) {
-                 exps[i]->dest_node_idx = exps[i]->src_node_idx;
+                // TODO ?
+                // exps[i]->dest_node_idx = exps[i]->src_node_idx;
             } else {
-                AlgebraicExpression_ExtendRecord(exps[i]); // TODO should come before scans are built
+                // Make sure that all entities are represented in Record
+                ast_id = AST_GetEntityIDFromReference(ast, exps[i]->src_node);
+                src_node_idx = RecordMap_FindOrAddID(segment->record_map, ast_id);
+
+                ast_id = AST_GetEntityIDFromReference(ast, exps[i]->dest_node);
+                dest_node_idx = RecordMap_FindOrAddID(segment->record_map, ast_id);
+
+                if (exps[i]->edge) {
+                    ast_id = AST_GetEntityIDFromReference(ast, exps[i]->edge);
+                    edge_idx = RecordMap_FindOrAddID(segment->record_map, ast_id);
+                }
             }
             if(exps[i]->minHops != 1 || exps[i]->maxHops != 1) {
                 op = NewCondVarLenTraverseOp(exps[i],
                                              exps[i]->minHops,
                                              exps[i]->maxHops,
+                                             src_node_idx,
+                                             dest_node_idx,
                                              gc->g);
             } else {
-                op = NewCondTraverseOp(gc->g, exps[i], TraverseRecordCap(ast));
+                op = NewCondTraverseOp(gc->g, exps[i], src_node_idx, dest_node_idx, edge_idx, TraverseRecordCap(ast));
             }
             Vector_Push(traversals, op);
         }
@@ -245,21 +304,20 @@ void _ExecutionPlanSegment_BuildTraversalOps(ExecutionPlanSegment *segment, Quer
             AlgebraicExpression *exp = exps[expCount-1];
             selectEntryPoint(exp, ft);
 
-            if (exp->dest_node_idx == NOT_IN_RECORD) {
-                // Anonymous node - make space for it in the Record
-                // TODO
-                // exp->dest_node_idx = AST_AddAnonymousRecordEntry(ast);
-            }
+            // Retrieve the AST ID for the destination node
+            uint ast_id = AST_GetEntityIDFromReference(ast, exp->dest_node);
+            // Convert to a Record ID
+            uint record_id = RecordMap_FindOrAddID(segment->record_map, ast_id);
 
             // Create SCAN operation.
             if(exp->dest_node->label) {
                 /* There's no longer need for the last matrix operand
                  * as it's been replaced by label scan. */
                 AlgebraicExpression_RemoveTerm(exp, exp->operand_count-1, NULL);
-                op = NewNodeByLabelScanOp(exp->dest_node, exp->dest_node_idx);
+                op = NewNodeByLabelScanOp(exp->dest_node, record_id);
                 Vector_Push(traversals, op);
             } else {
-                op = NewAllNodeScanOp(gc->g, exp->dest_node, exp->dest_node_idx);
+                op = NewAllNodeScanOp(gc->g, exp->dest_node, record_id);
                 Vector_Push(traversals, op);
             }
         }
@@ -268,18 +326,34 @@ void _ExecutionPlanSegment_BuildTraversalOps(ExecutionPlanSegment *segment, Quer
             if(exps[i]->operand_count == 0) continue;
             AlgebraicExpression_Transpose(exps[i]);
             // TODO tmp
+            uint ast_id;
+            uint src_node_idx;
+            uint dest_node_idx;
+            uint edge_idx = IDENTIFIER_NOT_FOUND;
             if (exps[i]->op == AL_EXP_UNARY) {
-                exps[i]->src_node_idx = exps[i]->dest_node_idx;
+                // exps[i]->src_node_idx = exps[i]->dest_node_idx;
             } else {
-                AlgebraicExpression_ExtendRecord(exps[i]);
+                // Make sure that all entities are represented in Record
+                ast_id = AST_GetEntityIDFromReference(ast, exps[i]->src_node);
+                src_node_idx = RecordMap_FindOrAddID(segment->record_map, ast_id);
+
+                ast_id = AST_GetEntityIDFromReference(ast, exps[i]->dest_node);
+                dest_node_idx = RecordMap_FindOrAddID(segment->record_map, ast_id);
+
+                if (exps[i]->edge) {
+                    ast_id = AST_GetEntityIDFromReference(ast, exps[i]->edge);
+                    edge_idx = RecordMap_FindOrAddID(segment->record_map, ast_id);
+                }
             }
             if(exps[i]->minHops != 1 || exps[i]->maxHops != 1) {
                 op = NewCondVarLenTraverseOp(exps[i],
                                              exps[i]->minHops,
                                              exps[i]->maxHops,
+                                             src_node_idx,
+                                             dest_node_idx,
                                              gc->g);
             } else {
-                op = NewCondTraverseOp(gc->g, exps[i], TraverseRecordCap(ast));
+                op = NewCondTraverseOp(gc->g, exps[i], src_node_idx, dest_node_idx, edge_idx, TraverseRecordCap(ast));
             }
             Vector_Push(traversals, op);
         }
@@ -328,7 +402,7 @@ void _ExecutionPlanSegment_BuildProjections(ExecutionPlanSegment *segment, AST *
         segment->projections = _BuildReturnExpressions(ast, segment, ret_clause);
         order_clause = cypher_ast_return_get_order_by(ret_clause);
     } else if (with_clause) {
-        segment->projections = AST_BuildWithExpressions(ast, with_clause);
+        segment->projections = _BuildWithExpressions(ast, segment, with_clause);
         order_clause = cypher_ast_with_get_order_by(with_clause);
     }
 
@@ -384,6 +458,15 @@ void _ExecutionPlanSegment_BuildProjections(ExecutionPlanSegment *segment, AST *
         // }
     // }
 
+}
+
+// TODO tmp, replace with better logic
+void _initOpRecordMap(OpBase *op, RecordMap *record_map) {
+    if (op == NULL) return;
+    op->record_map = record_map;
+    for (uint i = 0; i < op->childCount; i ++) {
+        _initOpRecordMap(op->children[i], record_map);
+    }
 }
 
 ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext *gc, AST *ast, ResultSet *result_set, AR_ExpNode **prev_projections, OpBase *prev_op) {
@@ -745,6 +828,9 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
         }
         Vector_Free(sub_trees);
     }
+
+    // TODO tmp, replace with better logic
+    _initOpRecordMap(segment->root, segment->record_map);
 
     return segment;
 }

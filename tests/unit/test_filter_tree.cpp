@@ -17,7 +17,6 @@ extern "C" {
 #include "../../src/filter_tree/filter_tree.h"
 #include "../../src/util/arr.h"
 #include "../../src/util/rmalloc.h"
-#include "../../src/query_executor.h"
 
 #ifdef __cplusplus
 }

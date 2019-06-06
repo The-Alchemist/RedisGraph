@@ -13,7 +13,7 @@
 #include "../../algorithms/all_paths.h"
 #include "./op_cond_var_len_traverse.h"
 
-OpBase* NewCondVarLenTraverseOp(AlgebraicExpression *ae, unsigned int minHops, unsigned int maxHops, Graph *g) {
+OpBase* NewCondVarLenTraverseOp(AlgebraicExpression *ae, uint minHops, uint maxHops, uint src_node_idx, uint dest_node_idx, Graph *g) {
     assert(ae && minHops <= maxHops && g && ae->operand_count == 1);
 
     CondVarLenTraverse *condVarLenTraverse = malloc(sizeof(CondVarLenTraverse));
@@ -21,8 +21,8 @@ OpBase* NewCondVarLenTraverseOp(AlgebraicExpression *ae, unsigned int minHops, u
     condVarLenTraverse->ae = ae;
     condVarLenTraverse->edgeRelationTypes = NULL;
 
-    condVarLenTraverse->srcNodeIdx = ae->src_node_idx;
-    condVarLenTraverse->destNodeIdx = ae->dest_node_idx;
+    condVarLenTraverse->srcNodeIdx = src_node_idx;
+    condVarLenTraverse->destNodeIdx = dest_node_idx;
 
     condVarLenTraverse->minHops = minHops;
     condVarLenTraverse->maxHops = maxHops;
@@ -42,7 +42,7 @@ OpBase* NewCondVarLenTraverseOp(AlgebraicExpression *ae, unsigned int minHops, u
     condVarLenTraverse->op.free = CondVarLenTraverseFree;
 
     condVarLenTraverse->op.modifies = array_new(uint, 1);
-    condVarLenTraverse->op.modifies = array_append(condVarLenTraverse->op.modifies, ae->dest_node_idx);
+    condVarLenTraverse->op.modifies = array_append(condVarLenTraverse->op.modifies, dest_node_idx);
 
     return (OpBase*)condVarLenTraverse;
 }

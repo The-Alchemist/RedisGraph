@@ -13,7 +13,6 @@
 // #include "assert.h"
 // #include "../../src/value.h"
 // #include "../../src/graph/graph.h"
-// #include "../../src/query_executor.h"
 // #include "../../src/graph/query_graph.h"
 // #include "../../src/util/simple_timer.h"
 // #include "../../src/arithmetic/algebraic_expression.h"

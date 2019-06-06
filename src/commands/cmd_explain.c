@@ -6,7 +6,6 @@
 
 #include "cmd_explain.h"
 #include "../index/index.h"
-#include "../query_executor.h"
 #include "../execution_plan/execution_plan.h"
 
 extern pthread_key_t _tlsASTKey;  // Thread local storage AST key.

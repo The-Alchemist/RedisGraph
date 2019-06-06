@@ -11,7 +11,6 @@ extern "C" {
 #endif
 
 #include "../../src/value.h"
-#include "../../src/query_executor.h"
 #include "../../src/arithmetic/arithmetic_expression.h"
 #include "../../src/graph/entities/node.h"
 #include "../../src/arithmetic/agg_funcs.h"

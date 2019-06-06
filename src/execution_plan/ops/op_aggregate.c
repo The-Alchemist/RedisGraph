@@ -9,7 +9,6 @@
 #include "../../util/arr.h"
 #include "../../util/rmalloc.h"
 #include "../../grouping/group.h"
-#include "../../query_executor.h"
 #include "../../arithmetic/aggregate.h"
 
 static AR_ExpNode** _getOrderExpressions(OpBase *op) {
