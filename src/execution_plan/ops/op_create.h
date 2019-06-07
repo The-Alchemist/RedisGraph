@@ -17,8 +17,8 @@
 
 typedef struct {
     OpBase op;
-    GraphContext *gc;
     QueryGraph *qg;
+    GraphContext *gc;
     Record *records;
 
     NodeCreateCtx *nodes_to_create;

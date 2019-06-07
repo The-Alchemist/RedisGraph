@@ -7,7 +7,6 @@
 #include "op_create.h"
 #include "../../util/arr.h"
 #include "../../schema/schema.h"
-#include "../../arithmetic/arithmetic_expression.h"
 #include <assert.h>
 
 OpBase* NewCreateOp(ResultSetStatistics *stats, NodeCreateCtx *nodes, EdgeCreateCtx *edges) {
@@ -72,16 +71,16 @@ void _CreateNodes(OpCreate *op, Record r) {
         Node *n = op->nodes_to_create[i].node;
 
         /* Create a new node. */
-        Node *newNode = Node_New(n->label, n->alias);
+        Node *newNode = Record_GetNode(r, op->nodes_to_create[i].node_idx);
+        newNode->entity = NULL;
+        newNode->alias = n->alias;
+        newNode->label = n->label;
 
         /* Save node for later insertion. */
         op->created_nodes = array_append(op->created_nodes, newNode);
 
         /* Save reference to property map */
         op->node_properties = array_append(op->node_properties, op->nodes_to_create[i].properties);
-
-        /* Update record with new node. */
-        Record_AddScalar(r, op->nodes_to_create[i].node_idx, SI_PtrVal(newNode));
     }
 }
 
@@ -92,20 +91,21 @@ void _CreateEdges(OpCreate *op, Record r) {
         Edge *e = op->edges_to_create[i].edge;
 
         /* Retrieve source and dest nodes. */
-        Node *src_node = (Node*)Record_GetGraphEntity(r, op->edges_to_create[i].src_idx);
-        Node *dest_node = (Node*)Record_GetGraphEntity(r, op->edges_to_create[i].dest_idx);
+        Node *src_node = Record_GetNode(r, op->edges_to_create[i].src_idx);
+        Node *dest_node = Record_GetNode(r, op->edges_to_create[i].dest_idx);
 
         /* Create the actual edge. */
-        Edge *newEdge = Edge_New(src_node, dest_node, e->relationship, e->alias);
+        Edge *newEdge = Record_GetEdge(r, op->edges_to_create[i].edge_idx);
+        newEdge->alias = e->alias;
+        newEdge->relationship = e->relationship;
+        Edge_SetSrcNode(newEdge, src_node);
+        Edge_SetDestNode(newEdge, dest_node);
 
         /* Save edge for later insertion. */
         op->created_edges = array_append(op->created_edges, newEdge);
 
         /* Save reference to property map */
         op->edge_properties = array_append(op->edge_properties, op->edges_to_create[i].properties);
-
-        /* Update record with new edge. */
-        Record_AddScalar(r, op->edges_to_create[i].edge_idx, SI_PtrVal(newEdge));
     }
 }
 
@@ -117,7 +117,6 @@ static void _CommitNodes(OpCreate *op) {
     
     uint node_count = array_len(op->created_nodes);
     Graph_AllocateNodes(op->gc->g, node_count);
-
 
     for(uint i = 0; i < node_count; i++) {
         n = op->created_nodes[i];
@@ -154,6 +153,7 @@ static void _CommitEdges(OpCreate *op) {
     for(uint i = 0; i < edge_count; i++) {
         e = op->created_edges[i];
         NodeID srcNodeID;
+        NodeID destNodeID;
 
         // Nodes which already existed prior to this query would
         // have their ID set under e->srcNodeID and e->destNodeID
@@ -161,8 +161,6 @@ static void _CommitEdges(OpCreate *op) {
         // saved under edge src/dest pointer.
         if(e->srcNodeID != INVALID_ENTITY_ID) srcNodeID = e->srcNodeID;
         else srcNodeID = ENTITY_GET_ID(Edge_GetSrcNode(e));
-
-        NodeID destNodeID;
         if(e->destNodeID != INVALID_ENTITY_ID) destNodeID = e->destNodeID;
         else destNodeID = ENTITY_GET_ID(Edge_GetDestNode(e));
 
@@ -181,8 +179,8 @@ static void _CommitEdges(OpCreate *op) {
 }
 
 static void _CommitNewEntities(OpCreate *op) {
-    size_t node_count = array_len(op->created_nodes);
-    size_t edge_count = array_len(op->created_edges);
+    uint node_count = array_len(op->created_nodes);
+    uint edge_count = array_len(op->created_edges);
 
     // Lock everything.
     Graph_AcquireWriteLock(op->gc->g);
@@ -259,10 +257,13 @@ OpResult OpCreateReset(OpBase *ctx) {
 
 void OpCreateFree(OpBase *ctx) {
     OpCreate *op = (OpCreate*)ctx;
+
     if(op->records) {
-        assert(array_len(op->records) == 0);
+        uint rec_count = array_len(op->records);
+        for(uint i = 0; i < rec_count; i++) Record_Free(op->records[i]);
         array_free(op->records);
     }
+
     if(op->nodes_to_create) {
         uint nodes_to_create_count = array_len(op->nodes_to_create);
         for (uint i = 0; i < nodes_to_create_count; i ++) {
@@ -280,21 +281,11 @@ void OpCreateFree(OpBase *ctx) {
     }
 
     if (op->created_nodes) {
-        size_t nodeCount = array_len(op->created_nodes);
-        for(uint i = 0; i < nodeCount; i++) {
-            // It's safe to free node, as its internal GraphEntity wouldn't be free.
-            Node_Free(op->created_nodes[i]);
-        }
         array_free(op->created_nodes);
         array_free(op->node_properties);
     }
 
     if (op->created_edges) {
-        size_t edgeCount = array_len(op->created_edges);
-        for(uint i = 0; i < edgeCount; i++) {
-            // It's safe to free edge, as its internal GraphEntity wouldn't be free.
-            Edge_Free(op->created_edges[i]);
-        }
         array_free(op->created_edges);
         array_free(op->edge_properties);
     }

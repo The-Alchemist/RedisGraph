@@ -80,7 +80,7 @@ ExecutionPlan* NewExecutionPlan (
 );
 
 /* Prints execution plan. */
-char* ExecutionPlan_Print(const ExecutionPlan *plan);
+void ExecutionPlan_Print(const ExecutionPlan *plan, RedisModuleCtx *ctx);
 
 /* Executes plan */
 ResultSet* ExecutionPlan_Execute(ExecutionPlan *plan);
