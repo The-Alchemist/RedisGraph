@@ -28,11 +28,10 @@ void _AST_MapPath(AST *ast, const cypher_astnode_t *path) {
         // the alias should be mapped as well as the entity.
         //  We may have already constructed a mapping
         // on a previous encounter: MATCH (a)-[]->(a)
-        AR_ExpNode *exp = NULL;
         uint id = IDENTIFIER_NOT_FOUND;
         if (ast_alias) {
             // Add alias if it has not already been mapped.
-            if (id == IDENTIFIER_NOT_FOUND) id = AST_MapAlias(ast, cypher_ast_identifier_get_name(ast_alias));
+            id = AST_MapAlias(ast, cypher_ast_identifier_get_name(ast_alias));
         }
 
         AST_MapEntity(ast, entity, id);
@@ -96,12 +95,22 @@ void _AST_MapExpression(AST *ast, const cypher_astnode_t *expr) {
 void _AST_MapProjection(AST *ast, const cypher_astnode_t *projection) {
     uint id = IDENTIFIER_NOT_FOUND;
     // A projection contains an expression and optionally an alias.
-    const cypher_astnode_t *ast_alias = cypher_ast_projection_get_alias(projection);
-    if (ast_alias) {
-        id = AST_MapAlias(ast, cypher_ast_identifier_get_name(ast_alias));
-    }
     const cypher_astnode_t *expr = cypher_ast_projection_get_expression(projection);
-    AST_MapEntity(ast, expr, id);
+
+    // Given a projection like "RETURN a", use "a"
+    if (cypher_astnode_type(expr) == CYPHER_AST_IDENTIFIER) {
+        const char *identifier = cypher_ast_identifier_get_name(expr);
+        id = AST_GetEntityIDFromAlias(ast, identifier);
+    }
+
+    const cypher_astnode_t *ast_alias = cypher_ast_projection_get_alias(projection);
+    id = AST_MapEntity(ast, expr, id);
+    // Given a projection like "RETURN a AS e", use "e"
+    // TODO note this also catches things like "RETURN e.name"
+    if (ast_alias) {
+        AST_AssociateAliasWithID(ast, cypher_ast_identifier_get_name(ast_alias), id);
+    }
+
     _AST_MapExpression(ast, expr);
 
 }
@@ -138,7 +147,11 @@ void _AST_BuildEntityMap(AST *ast) {
             // WITH introduces 1 or more aliases and refers to earlier entities.
 
         } else if (type == CYPHER_AST_RETURN) {
-        
+            uint projection_count = cypher_ast_return_nprojections(clause);
+            for (uint i = 0 ; i < projection_count; i ++) {
+                const cypher_astnode_t *projection = cypher_ast_return_get_projection(clause, i);
+                _AST_MapProjection(ast, projection);
+            }
         } else {
             // TODO probably unsafe
             uint child_count = cypher_astnode_nchildren(clause);

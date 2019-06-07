@@ -84,6 +84,7 @@ AR_ExpNode** _BuildReturnExpressions(AST *ast, ExecutionPlanSegment *segment, co
     if (cypher_ast_return_has_include_existing(ret_clause)) return _ReturnExpandAll(ast);
 
     uint count = cypher_ast_return_nprojections(ret_clause);
+    // segment->projections = array_new(AR_ExpNode*, count);
     AR_ExpNode **return_expressions = array_new(AR_ExpNode*, count);
     for (uint i = 0; i < count; i++) {
         const cypher_astnode_t *projection = cypher_ast_return_get_projection(ret_clause, i);
@@ -104,12 +105,12 @@ AR_ExpNode** _BuildReturnExpressions(AST *ast, ExecutionPlanSegment *segment, co
          * - AR_ExpNode
          * - Alias
          */
-        uint record_id = RecordMap_ReferenceToRecordID(segment->record_map, ast_exp);
+        uint record_id = RecordMap_FindOrAddASTEntity(segment->record_map, ast, ast_exp);
 
         // Construction an AR_ExpNode to represent this return entity.
         AR_ExpNode *exp = AR_EXP_FromExpression(ast, ast_exp);
         // Add it to the segment's projections.
-        segment->projections = array_append(segment->projections, exp);
+        // segment->projections = array_append(segment->projections, exp);
 
         // If the projection is aliased, add the alias to mappings and Record
         const char *alias = NULL;
@@ -146,7 +147,7 @@ AR_ExpNode** _BuildWithExpressions(AST *ast, ExecutionPlanSegment *segment, cons
 
         // Retrieve the AST ID of the entity
         uint ast_id = AST_GetEntityIDFromReference(ast, ast_exp);
-        uint record_id = RecordMap_ReferenceToRecordID(segment->record_map, ast_exp);
+        uint record_id = RecordMap_FindOrAddASTEntity(segment->record_map, ast, ast_exp);
 
         // Construction an AR_ExpNode to represent this entity.
         AR_ExpNode *exp = AR_EXP_FromExpression(ast, ast_exp);
@@ -190,7 +191,7 @@ void _ExecutionPlanSegment_BuildTraversalOps(ExecutionPlanSegment *segment, Quer
     if (nelems == 1) {
         // Only one entity is specified - build a node scan.
         const cypher_astnode_t *ast_node = cypher_ast_pattern_path_get_element(path, 0);
-        uint rec_idx = RecordMap_ReferenceToRecordID(segment->record_map, ast_node);
+        uint rec_idx = RecordMap_FindOrAddASTEntity(segment->record_map, ast, ast_node);
         Node *n = QueryGraph_GetEntityByASTRef(qg, ast_node);
         if(cypher_ast_node_pattern_nlabels(ast_node) > 0) {
             op = NewNodeByLabelScanOp(n, rec_idx);
@@ -877,19 +878,22 @@ ExecutionPlan* NewExecutionPlan(RedisModuleCtx *ctx, GraphContext *gc, bool comp
         ast_segment = AST_NewSegment(ast, start_offset, end_offset);
     }
 
-    const cypher_astnode_t *ret_clause = AST_GetClause(ast, CYPHER_AST_RETURN);
-    AR_ExpNode **return_columns = NULL;
-    if (segment && segment->projections) {
-        return_columns = segment->projections; // TODO kludge
-    }
-    if (explain == false) ResultSet_ReplyWithPreamble(plan->result_set, return_columns);
-
-    plan->segments[i] = _NewExecutionPlanSegment(ctx, gc, ast_segment, plan->result_set, input_projections, prev_op);
+    segment = _NewExecutionPlanSegment(ctx, gc, ast_segment, plan->result_set, input_projections, prev_op);
+    plan->segments[i] = segment;
 
     plan->root = plan->segments[i]->root;
 
     optimizePlan(gc, plan);
 
+
+    // const cypher_astnode_t *ret_clause = AST_GetClause(ast, CYPHER_AST_RETURN);
+    // TODO what is happening here?
+    AR_ExpNode **return_columns = segment->projections;
+    if (segment && segment->projections) {
+        return_columns = segment->projections; // TODO kludge
+        plan->result_set->column_count = array_len(return_columns);
+    }
+    if (explain == false) ResultSet_ReplyWithPreamble(plan->result_set, return_columns);
     // Free current AST segment if it has been constructed here.
     if (ast_segment != ast) {
         AST_Free(ast_segment);

@@ -90,6 +90,7 @@ uint AST_MapEntity(const AST *ast, AST_IDENTIFIER identifier, uint id);
 
 uint AST_MapAlias(const AST *ast, const char *alias);
 
+void AST_AssociateAliasWithID(const AST *ast, const char *alias, uint id);
 
 
 AST_Validation AST_PerformValidations(RedisModuleCtx *ctx, const AST *ast);

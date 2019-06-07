@@ -12,8 +12,8 @@
 #include <limits.h>
 
 typedef struct {
-    TrieMap *map;
-    uint record_len;
+    TrieMap *map;       // Mapping of multiple key types to Record IDs
+    uint record_len;    // Length of Record being modified by this segment.
 } RecordMap;
 
 typedef const void* AST_IDENTIFIER;

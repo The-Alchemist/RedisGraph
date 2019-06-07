@@ -46,9 +46,9 @@ uint AST_MapAlias(const AST *ast, const char *alias) {
     return *id_ptr;
 }
 
-// void AST_AssociateAliasWithID(const AST *ast, const char *alias, uint id) {
-    // uint *id_ptr = rm_malloc(sizeof(uint));
-    // *id_ptr = id;
-    // TrieMap_Add(ast->entity_map, (char*)alias, strlen(alias), id_ptr, TrieMap_DONT_CARE_REPLACE);
-// }
+void AST_AssociateAliasWithID(const AST *ast, const char *alias, uint id) {
+    uint *id_ptr = rm_malloc(sizeof(uint));
+    *id_ptr = id;
+    TrieMap_Add(ast->entity_map, (char*)alias, strlen(alias), id_ptr, TrieMap_DONT_CARE_REPLACE);
+}
 
