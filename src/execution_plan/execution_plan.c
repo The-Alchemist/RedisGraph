@@ -854,7 +854,7 @@ ExecutionPlan* NewExecutionPlan(RedisModuleCtx *ctx, GraphContext *gc, bool comp
     uint end_offset;
     uint start_offset = 0;
     OpBase *prev_op = NULL;
-    ExecutionPlanSegment *segment;
+    ExecutionPlanSegment *segment = NULL;
     AR_ExpNode **input_projections = NULL;
 
     // The original AST does not need to be modified if our query only has one segment
@@ -879,7 +879,7 @@ ExecutionPlan* NewExecutionPlan(RedisModuleCtx *ctx, GraphContext *gc, bool comp
 
     const cypher_astnode_t *ret_clause = AST_GetClause(ast, CYPHER_AST_RETURN);
     AR_ExpNode **return_columns = NULL;
-    if (segment->projections) {
+    if (segment && segment->projections) {
         return_columns = segment->projections; // TODO kludge
     }
     if (explain == false) ResultSet_ReplyWithPreamble(plan->result_set, return_columns);

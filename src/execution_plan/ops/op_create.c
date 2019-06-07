@@ -36,29 +36,12 @@ OpBase* NewCreateOp(ResultSetStatistics *stats, NodeCreateCtx *nodes, EdgeCreate
 }
 
 // TODO improve, consolidate, etc
-static void _AddNodeProperties(OpCreate *op, Schema *schema, Node *n, PropertyMap *props) {
+static void _AddProperties(OpCreate *op, GraphEntity *ge, PropertyMap *props) {
     if (props == NULL) return;
-
-    GraphContext *gc = op->gc;
-    Attribute_ID prop_id = ATTRIBUTE_NOTFOUND;
 
     for(int i = 0; i < props->property_count; i++) {
         Attribute_ID prop_id = GraphContext_FindOrAddAttribute(op->gc, props->keys[i]);
-        GraphEntity_AddProperty((GraphEntity*)n, prop_id, props->values[i]);
-    }
-
-    op->stats->properties_set += props->property_count;
-}
-
-static void _AddEdgeProperties(OpCreate *op, Schema *schema, Edge *e, PropertyMap *props) {
-    if (props == NULL) return;
-
-    GraphContext *gc = op->gc;
-    Attribute_ID prop_id = ATTRIBUTE_NOTFOUND;
-
-    for(int i = 0; i < props->property_count; i++) {
-        Attribute_ID prop_id = GraphContext_FindOrAddAttribute(op->gc, props->keys[i]);
-        GraphEntity_AddProperty((GraphEntity*)e, prop_id, props->values[i]);
+        GraphEntity_AddProperty(ge, prop_id, props->values[i]);
     }
 
     op->stats->properties_set += props->property_count;
@@ -137,7 +120,7 @@ static void _CommitNodes(OpCreate *op) {
         // Introduce node into graph.
         Graph_CreateNode(g, labelID, n);
 
-        _AddNodeProperties(op, schema, n, op->node_properties[i]);
+        _AddProperties(op, (GraphEntity*)n, op->node_properties[i]);
 
         if(n->label) GraphContext_AddNodeToIndices(op->gc, schema, n);
     }
@@ -172,7 +155,7 @@ static void _CommitEdges(OpCreate *op) {
         relationships_created++;
 
         // Set edge properties.
-        _AddEdgeProperties(op, schema, e, op->edge_properties[i]);
+        _AddProperties(op, (GraphEntity*)e, op->edge_properties[i]);
     }
 
     op->stats->relationships_created += relationships_created;

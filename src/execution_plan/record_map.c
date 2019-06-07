@@ -74,14 +74,23 @@ uint RecordMap_FindOrAddASTEntity(RecordMap *record_map, const AST *ast, const c
     // Ensure this is a new entity
     // assert(TrieMap_Find(record_map->map, (char*)&entity, sizeof(entity)) == TRIEMAP_NOTFOUND);
 
-    uint *id_ptr = TrieMap_Find(record_map->map, (char*)&entity, sizeof(entity));
-    if (id_ptr != TRIEMAP_NOTFOUND) return *id_ptr;
+    uint id;
+    // Return the ID immediately if this entity is already in the Record Map
+    id = RecordMap_LookupEntity(record_map, entity);
+    if (id != IDENTIFIER_NOT_FOUND) return id;
 
-    uint id = record_map->record_len++;
-
-    // Map AST ID
+    // Retrieve the AST ID
     uint ast_id = AST_GetEntityIDFromReference(ast, entity);
-    id_ptr = _BuildMapValue(id);
+
+    // If the AST ID has a corresponding Record ID, return it.
+    id = RecordMap_LookupEntityID(record_map, ast_id);
+    if (id != IDENTIFIER_NOT_FOUND) return id;
+
+    // We're adding a new Record mapping; create a new ID
+    id = record_map->record_len++;
+
+    // Map the AST ID
+    uint *id_ptr = _BuildMapValue(id);
     TrieMap_Add(record_map->map, (char*)&ast_id, sizeof(ast_id), id_ptr, TrieMap_DONT_CARE_REPLACE);
 
     // Map AST pointer
