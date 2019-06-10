@@ -10,6 +10,7 @@
 #include "./agg_ctx.h"
 #include "../graph/query_graph.h"
 #include "../execution_plan/record.h"
+#include "../execution_plan/record_map.h"
 #include "../graph/entities/graph_entity.h"
 #include "../graph/query_graph.h"
 #include "../ast/ast.h"
@@ -147,11 +148,11 @@ int AR_EXP_ContainsAggregation(AR_ExpNode *root, AR_ExpNode **agg_node);
 void AR_EXP_ToString(const AR_ExpNode *root, char **str);
 
 AR_ExpNode* AR_EXP_NewVariableFromID(uint id, const char *prop);
-AR_ExpNode* AR_EXP_NewVariableOperandNode(const AST *ast, const char *alias, const char *prop);
+AR_ExpNode* AR_EXP_NewVariableOperandNode(const RecordMap *record_map, const char *alias, const char *prop);
 AR_ExpNode* AR_EXP_NewConstOperandNode(SIValue constant);
 
 /* Construct an arithmetic expression tree from a CYPHER_AST_EXPRESSION node. */
-AR_ExpNode* AR_EXP_FromExpression(const AST *ast, const cypher_astnode_t *expr);
+AR_ExpNode* AR_EXP_FromExpression(const RecordMap *record_map, const cypher_astnode_t *expr);
 
 /* Clones given expression. */
 AR_ExpNode* AR_EXP_Clone(AR_ExpNode* exp);

@@ -108,12 +108,28 @@ AR_ExpNode* AR_EXP_NewVariableFromID(uint id, const char *prop) {
     return node;
 }
 
-AR_ExpNode* AR_EXP_NewVariableOperandNode(const AST *ast, const char *alias, const char *prop) {
+AR_ExpNode* AR_EXP_NewVariableOperandNode(const RecordMap *record_map, const char *alias, const char *prop) {
+    assert(false);
     AR_ExpNode *node = rm_malloc(sizeof(AR_ExpNode));
     node->type = AR_EXP_OPERAND;
     node->operand.type = AR_EXP_VARIADIC;
     node->operand.variadic.entity_alias = alias;
-    node->operand.variadic.entity_alias_idx = AST_GetEntityIDFromAlias(ast, alias);
+    node->operand.variadic.entity_alias_idx = RecordMap_FindOrAddAlias(record_map, alias);
+    node->operand.variadic.entity_prop = prop;
+    node->operand.variadic.entity_prop_idx = ATTRIBUTE_NOTFOUND;
+
+    return node;
+}
+
+// TODO tmp crap
+AR_ExpNode* _AR_EXP_NewVariableOperandNodeFromAST(const RecordMap *record_map, const char *alias, const char *prop, const cypher_astnode_t *entity) {
+    AR_ExpNode *node = rm_malloc(sizeof(AR_ExpNode));
+    node->type = AR_EXP_OPERAND;
+    node->operand.type = AR_EXP_VARIADIC;
+    node->operand.variadic.entity_alias = alias;
+    AST *ast = AST_GetFromTLS();
+    node->operand.variadic.entity_alias_idx = RecordMap_FindOrAddASTEntity(record_map, ast, entity);
+    // node->operand.variadic.entity_alias_idx = RecordMap_FindOrAddAlias(record_map, alias);
     node->operand.variadic.entity_prop = prop;
     node->operand.variadic.entity_prop_idx = ATTRIBUTE_NOTFOUND;
 
@@ -128,7 +144,7 @@ AR_ExpNode* AR_EXP_NewConstOperandNode(SIValue constant) {
     return node;
 }
 
-AR_ExpNode* AR_EXP_FromExpression(const AST *ast, const cypher_astnode_t *expr) {
+AR_ExpNode* AR_EXP_FromExpression(const RecordMap *record_map, const cypher_astnode_t *expr) {
     const cypher_astnode_type_t type = cypher_astnode_type(expr);
 
     /* Function invocations*/
@@ -144,15 +160,15 @@ AR_ExpNode* AR_EXP_FromExpression(const AST *ast, const cypher_astnode_t *expr) 
         for (unsigned int i = 0; i < arg_count; i ++) {
             const cypher_astnode_t *arg = cypher_ast_apply_operator_get_argument(expr, i);
             // Recursively convert arguments
-            op->op.children[i] = AR_EXP_FromExpression(ast, arg);
+            op->op.children[i] = AR_EXP_FromExpression(record_map, arg);
         }
         return op;
 
     /* Variables (full nodes and edges, UNWIND artifacts */
     } else if (type == CYPHER_AST_IDENTIFIER) {
-        // Identifier referencing another AST entity
+        // Identifier referencing another record_map entity
         const char *alias = cypher_ast_identifier_get_name(expr);
-        return AR_EXP_NewVariableOperandNode(ast, alias, NULL);
+        return _AR_EXP_NewVariableOperandNodeFromAST(record_map, alias, NULL, expr);
 
     /* Entity-property pair */
     } else if (type == CYPHER_AST_PROPERTY_OPERATOR) {
@@ -167,7 +183,7 @@ AR_ExpNode* AR_EXP_FromExpression(const AST *ast, const cypher_astnode_t *expr) 
         const cypher_astnode_t *prop_name_node = cypher_ast_property_operator_get_prop_name(expr);
         const char *prop_name = cypher_ast_prop_name_get_value(prop_name_node);
 
-        return AR_EXP_NewVariableOperandNode(ast, alias, prop_name);
+        return _AR_EXP_NewVariableOperandNodeFromAST(record_map, alias, prop_name, expr);
         // return AR_EXP_NewPropertyOperator(entity_id, prop_name, SCHEMA_UNKNOWN);
 
     /* SIValue constant types */
@@ -209,7 +225,7 @@ AR_ExpNode* AR_EXP_FromExpression(const AST *ast, const cypher_astnode_t *expr) 
             // -3 is a unary minus operation on the integer 3
             // TODO I feel like this is really over-elaborate - handle it in parser?
             // TODO this can obviously be improved greatly
-            AR_ExpNode *ar_exp = AR_EXP_FromExpression(ast, arg);
+            AR_ExpNode *ar_exp = AR_EXP_FromExpression(record_map, arg);
             SIValue exp = AR_EXP_Evaluate(ar_exp, NULL);
             exp = SIValue_Subtract(SI_LongVal(0), exp);
             return AR_EXP_NewConstOperandNode(exp);
@@ -224,9 +240,9 @@ AR_ExpNode* AR_EXP_FromExpression(const AST *ast, const cypher_astnode_t *expr) 
         // Arguments are of type CYPHER_AST_EXPRESSION
         AR_ExpNode *op = _AR_EXP_NewOpNodeFromAST(operator_enum, 2);
         const cypher_astnode_t *lhs_node = cypher_ast_binary_operator_get_argument1(expr);
-        op->op.children[0] = AR_EXP_FromExpression(ast, lhs_node);
+        op->op.children[0] = AR_EXP_FromExpression(record_map, lhs_node);
         const cypher_astnode_t *rhs_node = cypher_ast_binary_operator_get_argument2(expr);
-        op->op.children[1] = AR_EXP_FromExpression(ast, rhs_node);
+        op->op.children[1] = AR_EXP_FromExpression(record_map, rhs_node);
         return op;
 
         // binary comparison

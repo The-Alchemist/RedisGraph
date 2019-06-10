@@ -4,10 +4,10 @@
 * This file is available under the Redis Labs Source Available License Agreement
 */
 
-#include <assert.h>
 #include "../value.h"
 #include "filter_tree.h"
 #include "../util/arr.h"
+#include <assert.h>
 
 static inline FT_FilterNode* LeftChild(const FT_FilterNode *node) { return node->cond.left; }
 static inline FT_FilterNode* RightChild(const FT_FilterNode *node) { return node->cond.right; }

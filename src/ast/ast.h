@@ -4,8 +4,7 @@
  * This file is available under the Redis Labs Source Available License Agreement
  */
 
-#ifndef NEW_AST_H
-#define NEW_AST_H
+#pragma once
 
 // #include "/ast_shared.h"
 #include "../value.h"
@@ -73,30 +72,22 @@ long AST_ParseIntegerNode(const cypher_astnode_t *int_node);
 
 bool AST_ClauseContainsAggregation(const cypher_astnode_t *clause);
 
-AR_ExpNode** AST_GetOrderExpressions(const cypher_astnode_t *order_clause);
-
-
-AR_ExpNode** AST_BuildReturnExpressions(AST *ast, const cypher_astnode_t *ret_clause);
-AR_ExpNode** AST_BuildWithExpressions(AST *ast, const cypher_astnode_t *with_clause);
-AR_ExpNode** AST_BuildOrderExpressions(AST *ast, const cypher_astnode_t *order_clause);
-
 // mapping functions
 
 uint AST_GetEntityIDFromReference(const AST *ast, AST_IDENTIFIER entity);
 
 uint AST_GetEntityIDFromAlias(const AST *ast, const char *alias);
 
-uint AST_MapEntity(const AST *ast, AST_IDENTIFIER identifier, uint id);
+uint ASTMap_AddEntity(const AST *ast, AST_IDENTIFIER identifier, uint id);
 
-uint AST_MapAlias(const AST *ast, const char *alias);
+uint ASTMap_FindOrAddAlias(const AST *ast, const char *alias, uint id);
 
-void AST_AssociateAliasWithID(const AST *ast, const char *alias, uint id);
+// void AST_AssociateAliasWithID(const AST *ast, const char *alias, uint id);
 
+void AST_BuildEntityMap(AST *ast);
 
 AST_Validation AST_PerformValidations(RedisModuleCtx *ctx, const AST *ast);
 
 AST* AST_GetFromTLS(void);
 
 void AST_Free(AST *ast);
-
-#endif

@@ -28,7 +28,7 @@ static ResultSet* _prepare_resultset(RedisModuleCtx *ctx, AST *ast, bool compact
     return set;
 }
 
-AR_ExpNode** _ReturnExpandAll(AST *ast) {
+AR_ExpNode** _ReturnExpandAll() {
     // TODO
     // uint identifier_count = array_len(ast->defined_entities);
     // AR_ExpNode **return_expressions = array_new(AR_ExpNode*, identifier_count);
@@ -44,29 +44,29 @@ AR_ExpNode** _ReturnExpandAll(AST *ast) {
     return NULL;
 }
 
-AR_ExpNode** AST_BuildOrderExpressions(AST *ast, const cypher_astnode_t *order_clause) {
-    // Handle ORDER entities
-    assert(order_clause);
-
+// Handle ORDER entities
+AR_ExpNode** _BuildOrderExpressions(RecordMap *record_map, const cypher_astnode_t *order_clause) {
     bool ascending = true;
-    uint nitems = cypher_ast_order_by_nitems(order_clause);
-    AR_ExpNode **order_exps = array_new(AR_ExpNode*, nitems);
 
-    for (uint i = 0; i < nitems; i ++) {
+    uint count = cypher_ast_order_by_nitems(order_clause);
+    AR_ExpNode **order_exps = array_new(AR_ExpNode*, count);
+
+    for (uint i = 0; i < count; i++) {
         const cypher_astnode_t *item = cypher_ast_order_by_get_item(order_clause, i);
-        const cypher_astnode_t *cypher_exp = cypher_ast_sort_item_get_expression(item);
-        AR_ExpNode *exp;
-        if (cypher_astnode_type(cypher_exp) == CYPHER_AST_IDENTIFIER) {
-            // Reference to an alias in the query - associate with existing AR_ExpNode
-            const char *alias = cypher_ast_identifier_get_name(cypher_exp);
-            // Clone the expression so that we can free safely
-            assert(false);
+        const cypher_astnode_t *ast_exp = cypher_ast_sort_item_get_expression(item);
+        AR_ExpNode *exp = AR_EXP_FromExpression(record_map, ast_exp);
+        // AR_ExpNode *exp;
+        // if (cypher_astnode_type(ast_exp) == CYPHER_AST_IDENTIFIER) {
+            // // Reference to an alias in the query - associate with existing AR_ExpNode
+            // const char *alias = cypher_ast_identifier_get_name(ast_exp);
+            // // Clone the expression so that we can free safely
+            // // assert(false);
             // exp = AR_EXP_Clone(AST_GetEntityFromAlias(ast, alias));
-        } else {
-            // Independent operator like:
-            // ORDER BY COUNT(a)
-            exp = AR_EXP_FromExpression(ast, cypher_exp);
-        }
+        // } else {
+            // // Independent operator like:
+            // // ORDER BY COUNT(a)
+            // exp = AR_EXP_FromExpression(ast, ast_exp);
+        // }
 
         order_exps = array_append(order_exps, exp);
         // TODO direction should be specifiable per order entity
@@ -78,10 +78,10 @@ AR_ExpNode** AST_BuildOrderExpressions(AST *ast, const cypher_astnode_t *order_c
     return order_exps;
 }
 // Handle RETURN entities
-AR_ExpNode** _BuildReturnExpressions(AST *ast, ExecutionPlanSegment *segment, const cypher_astnode_t *ret_clause) {
+AR_ExpNode** _BuildReturnExpressions(RecordMap *record_map, const cypher_astnode_t *ret_clause) {
     // Query is of type "RETURN *",
     // collect all defined identifiers and create return elements for them
-    if (cypher_ast_return_has_include_existing(ret_clause)) return _ReturnExpandAll(ast);
+    if (cypher_ast_return_has_include_existing(ret_clause)) return _ReturnExpandAll();
 
     uint count = cypher_ast_return_nprojections(ret_clause);
     // segment->projections = array_new(AR_ExpNode*, count);
@@ -92,8 +92,8 @@ AR_ExpNode** _BuildReturnExpressions(AST *ast, ExecutionPlanSegment *segment, co
         const cypher_astnode_t *ast_exp = cypher_ast_projection_get_expression(projection);
 
         // Retrieve the AST ID of the return entity
-        uint ast_id = AST_GetEntityIDFromReference(ast, ast_exp);
-        assert(ast_id != IDENTIFIER_NOT_FOUND);
+        // uint ast_id = AST_GetEntityIDFromReference(ast, ast_exp);
+        // assert(ast_id != IDENTIFIER_NOT_FOUND);
 
         // uint record_id = ExecutionPlanSegment_GetRecordIDFromReference(segment, ast_exp);
         // if (record_id != IDENTIFIER_NOT_FOUND) {
@@ -105,10 +105,10 @@ AR_ExpNode** _BuildReturnExpressions(AST *ast, ExecutionPlanSegment *segment, co
          * - AR_ExpNode
          * - Alias
          */
-        uint record_id = RecordMap_FindOrAddASTEntity(segment->record_map, ast, ast_exp);
+        // uint record_id = RecordMap_FindOrAddASTEntity(segment->record_map, ast, ast_exp);
 
         // Construction an AR_ExpNode to represent this return entity.
-        AR_ExpNode *exp = AR_EXP_FromExpression(ast, ast_exp);
+        AR_ExpNode *exp = AR_EXP_FromExpression(record_map, ast_exp);
         // Add it to the segment's projections.
         // segment->projections = array_append(segment->projections, exp);
 
@@ -118,7 +118,7 @@ AR_ExpNode** _BuildReturnExpressions(AST *ast, ExecutionPlanSegment *segment, co
         if (alias_node) {
             // The projection either has an alias (AS) or is a function call.
             alias = cypher_ast_identifier_get_name(alias_node);
-            // TODO ?
+            // TODO  ?
             // RecordMap_LookupAlias(segment->record_map, alias);
         } else {
             const cypher_astnode_t *ast_exp = cypher_ast_projection_get_expression(projection);
@@ -130,7 +130,7 @@ AR_ExpNode** _BuildReturnExpressions(AST *ast, ExecutionPlanSegment *segment, co
                 assert(false);
             }
             exp->operand.variadic.entity_alias = identifier;
-            exp->operand.variadic.entity_alias_idx = record_id;
+            // exp->operand.variadic.entity_alias_idx = record_id;
         }
         return_expressions = array_append(return_expressions, exp);
     }
@@ -150,7 +150,7 @@ AR_ExpNode** _BuildWithExpressions(AST *ast, ExecutionPlanSegment *segment, cons
         uint record_id = RecordMap_FindOrAddASTEntity(segment->record_map, ast, ast_exp);
 
         // Construction an AR_ExpNode to represent this entity.
-        AR_ExpNode *exp = AR_EXP_FromExpression(ast, ast_exp);
+        AR_ExpNode *exp = AR_EXP_FromExpression(segment->record_map, ast_exp);
         // Add it to the segment's projections.
         segment->projections = array_append(segment->projections, exp);
 
@@ -400,14 +400,14 @@ void _ExecutionPlanSegment_BuildProjections(ExecutionPlanSegment *segment, AST *
 
     const cypher_astnode_t *order_clause = NULL;
     if (ret_clause) {
-        segment->projections = _BuildReturnExpressions(ast, segment, ret_clause);
+        segment->projections = _BuildReturnExpressions(segment->record_map, ret_clause);
         order_clause = cypher_ast_return_get_order_by(ret_clause);
     } else if (with_clause) {
         segment->projections = _BuildWithExpressions(ast, segment, with_clause);
         order_clause = cypher_ast_with_get_order_by(with_clause);
     }
 
-    if (order_clause) segment->order_expressions = AST_BuildOrderExpressions(ast, order_clause);
+    if (order_clause) segment->order_expressions = _BuildOrderExpressions(segment->record_map, order_clause);
 
     // TODO tmp
     const cypher_astnode_t *call_clause = AST_GetClause(ast, CYPHER_AST_CALL);
@@ -427,8 +427,8 @@ void _ExecutionPlanSegment_BuildProjections(ExecutionPlanSegment *segment, AST *
                 // yield = AR_EXP_FromExpression(ast, ast_yield_exp);
                 // AR_EXP_ToString(yield, &yield_str);
                 // AST_RecordAccommodateExpression(ast, yield);
-                // AST_MapEntity(ast, ast_yield_exp, yield);
-                // AST_MapAlias(ast, yield_str, yield);
+                // ASTMap_AddEntity(ast, ast_yield_exp, yield);
+                // ASTMap_FindOrAddAlias(ast, yield_str, yield);
                 // yield->record_idx = AST_AddRecordEntry(ast);
             // } else {
                 // yield_str = rm_strdup(cypher_ast_identifier_get_name(yield_alias));
@@ -451,8 +451,8 @@ void _ExecutionPlanSegment_BuildProjections(ExecutionPlanSegment *segment, AST *
                 // exp->operand.variadic.entity_alias = strdup(proc->output[i]->name);
                 // exp->operand.variadic.entity_alias_idx = exp->record_idx;
                 // AST_RecordAccommodateExpression(ast, exp);
-                // // AST_MapEntity(ast, ast_yield_exp, yield);
-                // AST_MapAlias(ast, proc->output[i]->name, exp);
+                // // ASTMap_AddEntity(ast, ast_yield_exp, yield);
+                // ASTMap_FindOrAddAlias(ast, proc->output[i]->name, exp);
                 // // yield->record_idx = AST_AddRecordEntry(ast);
                 // segment->projections = array_append(segment->projections, exp);
             // }
@@ -485,7 +485,8 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
         uint projection_count = array_len(prev_projections);
         for (uint i = 0; i < projection_count; i++) {
             AR_ExpNode *projection = prev_projections[i];
-            RecordMap_ExpressionToRecordID(record_map, projection);
+            // TODO
+            // RecordMap_ExpressionToRecordID(record_map, projection);
         }
     }
 
@@ -517,8 +518,8 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
             // // TODO tmp, leak
             // AR_EXP_ToString(arg, &arg_str);
             // AST_RecordAccommodateExpression(ast, arg);
-            // AST_MapEntity(ast, ast_arg, arg);
-            // AST_MapAlias(ast, arg_str, arg);
+            // ASTMap_AddEntity(ast, ast_arg, arg);
+            // ASTMap_FindOrAddAlias(ast, arg_str, arg);
             // arguments = array_append(arguments, arg_str);
         // }
 
@@ -540,8 +541,8 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
                 // // yield = AR_EXP_FromExpression(ast, ast_yield_exp);
                 // AR_EXP_ToString(yield, &yield_str);
                 // // AST_RecordAccommodateExpression(ast, yield);
-                // // AST_MapEntity(ast, ast_yield_exp, yield);
-                // // AST_MapAlias(ast, yield_str, yield);
+                // // ASTMap_AddEntity(ast, ast_yield_exp, yield);
+                // // ASTMap_FindOrAddAlias(ast, yield_str, yield);
                 // // yield->record_idx = AST_AddRecordEntry(ast);
             // } else {
                 // yield_str = rm_strdup(cypher_ast_identifier_get_name(yield_alias));
@@ -613,7 +614,7 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
     // Set root operation
     const cypher_astnode_t *unwind_clause = AST_GetClause(ast, CYPHER_AST_UNWIND);
     if(unwind_clause) {
-        AST_UnwindContext unwind_ast_ctx = AST_PrepareUnwindOp(record_map, unwind_clause);
+        AST_UnwindContext unwind_ast_ctx = AST_PrepareUnwindOp(unwind_clause, record_map);
 
         OpBase *opUnwind = NewUnwindOp(unwind_ast_ctx.record_idx, unwind_ast_ctx.exps);
         Vector_Push(ops, opUnwind);
@@ -621,7 +622,7 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
 
     bool create_clause = AST_ContainsClause(ast, CYPHER_AST_CREATE);
     if(create_clause) {
-        AST_CreateContext create_ast_ctx = AST_PrepareCreateOp(ast, record_map, qg);
+        AST_CreateContext create_ast_ctx = AST_PrepareCreateOp(record_map, ast, qg);
         OpBase *opCreate = NewCreateOp(&result_set->stats,
                                        create_ast_ctx.nodes_to_create,
                                        create_ast_ctx.edges_to_create);
@@ -640,7 +641,7 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
         Vector_Free(path_traversal);
 
         // Append a merge operation
-        AST_MergeContext merge_ast_ctx = AST_PrepareMergeOp(ast, record_map, merge_clause, qg);
+        AST_MergeContext merge_ast_ctx = AST_PrepareMergeOp(record_map, ast, merge_clause, qg);
         OpBase *opMerge = NewMergeOp(&result_set->stats,
                                      merge_ast_ctx.nodes_to_merge,
                                      merge_ast_ctx.edges_to_merge);
@@ -651,7 +652,7 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
     if(delete_clause) {
         uint *nodes_ref;
         uint *edges_ref;
-        AST_PrepareDeleteOp(delete_clause, &nodes_ref, &edges_ref);
+        AST_PrepareDeleteOp(delete_clause, record_map, &nodes_ref, &edges_ref);
         OpBase *opDelete = NewDeleteOp(nodes_ref, edges_ref, &result_set->stats);
         Vector_Push(ops, opDelete);
     }
@@ -660,7 +661,7 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
     if(set_clause) {
         // Create a context for each update expression.
         uint nitems;
-        EntityUpdateEvalCtx *update_exps = AST_PrepareUpdateOp(set_clause, &nitems);
+        EntityUpdateEvalCtx *update_exps = AST_PrepareUpdateOp(set_clause, record_map, &nitems);
         OpBase *op_update = NewUpdateOp(gc, update_exps, nitems, &result_set->stats);
         Vector_Push(ops, op_update);
     }
@@ -680,7 +681,12 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
         modifies = array_new(uint, exp_count);
         for (uint i = 0; i < exp_count; i ++) {
             AR_ExpNode *exp = projections[i];
-            uint exp_id = RecordMap_ExpressionToRecordID(segment->record_map, exp);
+            // TODO 
+            uint exp_id = exp->operand.variadic.entity_alias_idx;
+            // if (exp->type == AR_EXP_OPERAND && exp->operand.type == AR_EXP_VARIADIC) {
+            
+            // }
+            // uint exp_id = RecordMap_ExpressionToRecordID(segment->record_map, exp);
             modifies = array_append(modifies, exp_id);
         }
     }
@@ -932,11 +938,24 @@ void ExecutionPlan_Print(const ExecutionPlan *plan, RedisModuleCtx *ctx) {
     RedisModule_ReplySetArrayLength(ctx, op_count);
 }
 
+void _ExecutionPlanInit(OpBase *root) {
+    if(root->init) root->init(root);
+    for(int i = 0; i < root->childCount; i++) {
+        _ExecutionPlanInit(root->children[i]);
+    }
+}
+
+void ExecutionPlanInit(ExecutionPlan *plan) {
+    if(!plan) return;
+    _ExecutionPlanInit(plan->root);
+}
+
 
 ResultSet* ExecutionPlan_Execute(ExecutionPlan *plan) {
     Record r;
     OpBase *op = plan->root;
 
+    ExecutionPlanInit(plan);
     while((r = op->consume(op)) != NULL) Record_Free(r);
     return plan->result_set;
 }
