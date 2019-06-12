@@ -90,6 +90,13 @@ static void _AST_MapExpression(AST *ast, const cypher_astnode_t *expr) {
         for (uint i = 0; i < nchildren; i ++) {
             _AST_MapExpression(ast, cypher_ast_comparison_get_argument(expr, i));
         }
+    } else if (type == CYPHER_AST_INTEGER ||
+               type == CYPHER_AST_FLOAT   ||
+               type == CYPHER_AST_STRING  ||
+               type == CYPHER_AST_TRUE    ||
+               type == CYPHER_AST_FALSE   ||
+               type == CYPHER_AST_NULL) {
+        return;
     } else {
         printf("Encountered unhandled type '%s'\n", cypher_astnode_typestr(type));
         assert(false);

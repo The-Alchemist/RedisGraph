@@ -45,28 +45,43 @@ AR_ExpNode** _ReturnExpandAll() {
 }
 
 // Handle ORDER entities
-AR_ExpNode** _BuildOrderExpressions(RecordMap *record_map, const cypher_astnode_t *order_clause) {
+AR_ExpNode** _BuildOrderExpressions(RecordMap *record_map, AR_ExpNode **projections, const cypher_astnode_t *order_clause) {
     bool ascending = true;
 
+    uint projection_count = array_len(projections);
     uint count = cypher_ast_order_by_nitems(order_clause);
     AR_ExpNode **order_exps = array_new(AR_ExpNode*, count);
 
     for (uint i = 0; i < count; i++) {
         const cypher_astnode_t *item = cypher_ast_order_by_get_item(order_clause, i);
         const cypher_astnode_t *ast_exp = cypher_ast_sort_item_get_expression(item);
-        AR_ExpNode *exp = AR_EXP_FromExpression(record_map, ast_exp);
-        // AR_ExpNode *exp;
-        // if (cypher_astnode_type(ast_exp) == CYPHER_AST_IDENTIFIER) {
-            // // Reference to an alias in the query - associate with existing AR_ExpNode
-            // const char *alias = cypher_ast_identifier_get_name(ast_exp);
+        /* TODO need to think about logic here - can introduce new data, reference
+         * projections, reference otherwise-unprojected aliases. In the referencing-projection
+         * case, we may not be allowed to use the pre-existing record index:
+         * RETURN e.name as v ORDER BY v */
+        AR_ExpNode *exp;
+        if (cypher_astnode_type(ast_exp) == CYPHER_AST_IDENTIFIER) {
+            // Order expression is a reference to an alias in the query
+            const char *alias = cypher_ast_identifier_get_name(ast_exp);
+            for (uint j = 0; j < projection_count; j ++) {
+                AR_ExpNode *projection = projections[j];
+                if (!strcmp(projection->resolved_name, alias)) {
+                    exp = projection;
+                }
+            }
+            // uint record_id = RecordMap_LookupAlias(record_map, alias);
+            // if (record_id != IDENTIFIER_NOT_FOUND) {
+                // // check projections?
+            // }
             // // Clone the expression so that we can free safely
             // // assert(false);
             // exp = AR_EXP_Clone(AST_GetEntityFromAlias(ast, alias));
-        // } else {
-            // // Independent operator like:
-            // // ORDER BY COUNT(a)
-            // exp = AR_EXP_FromExpression(ast, ast_exp);
-        // }
+        } else {
+            // Independent operator like:
+            // ORDER BY COUNT(a)
+            exp = AR_EXP_FromExpression(record_map, ast_exp);
+        }
+        // AR_ExpNode *exp = AR_EXP_FromExpression(record_map, ast_exp);
 
         order_exps = array_append(order_exps, exp);
         // TODO direction should be specifiable per order entity
@@ -77,6 +92,7 @@ AR_ExpNode** _BuildOrderExpressions(RecordMap *record_map, const cypher_astnode_
 
     return order_exps;
 }
+
 // Handle RETURN entities
 AR_ExpNode** _BuildReturnExpressions(RecordMap *record_map, const cypher_astnode_t *ret_clause) {
     // Query is of type "RETURN *",
@@ -84,54 +100,41 @@ AR_ExpNode** _BuildReturnExpressions(RecordMap *record_map, const cypher_astnode
     if (cypher_ast_return_has_include_existing(ret_clause)) return _ReturnExpandAll();
 
     uint count = cypher_ast_return_nprojections(ret_clause);
-    // segment->projections = array_new(AR_ExpNode*, count);
     AR_ExpNode **return_expressions = array_new(AR_ExpNode*, count);
     for (uint i = 0; i < count; i++) {
         const cypher_astnode_t *projection = cypher_ast_return_get_projection(ret_clause, i);
         // The AST expression can be an identifier, function call, or constant
         const cypher_astnode_t *ast_exp = cypher_ast_projection_get_expression(projection);
 
-        // Retrieve the AST ID of the return entity
-        // uint ast_id = AST_GetEntityIDFromReference(ast, ast_exp);
-        // assert(ast_id != IDENTIFIER_NOT_FOUND);
-
-        // uint record_id = ExecutionPlanSegment_GetRecordIDFromReference(segment, ast_exp);
-        // if (record_id != IDENTIFIER_NOT_FOUND) {
-            // This projection has already been mapped.
-        // }
-        /* Possible mappings:
-         * - AST pointer(s)
-         * - AST ID
-         * - AR_ExpNode
-         * - Alias
-         */
-        // uint record_id = RecordMap_FindOrAddASTEntity(segment->record_map, ast, ast_exp);
-
         // Construction an AR_ExpNode to represent this return entity.
         AR_ExpNode *exp = AR_EXP_FromExpression(record_map, ast_exp);
-        // Add it to the segment's projections.
-        // segment->projections = array_append(segment->projections, exp);
 
-        // If the projection is aliased, add the alias to mappings and Record
-        const char *alias = NULL;
+
+        // Find the resolved name of the entity - its alias, its identifier if referring to a full entity,
+        // the entity.prop combination ("a.val"), or the function call ("MAX(a.val)")
+        const char *identifier = NULL;
         const cypher_astnode_t *alias_node = cypher_ast_projection_get_alias(projection);
         if (alias_node) {
-            // The projection either has an alias (AS) or is a function call.
-            alias = cypher_ast_identifier_get_name(alias_node);
-            // TODO  ?
+            // The projection either has an alias (AS), is a function call, or is a property specification (e.name).
+            identifier = cypher_ast_identifier_get_name(alias_node);
+            // TODO not quite correct, since re-uses the record ID but we actually want to refer to the
+            // just-built AR_ExpNode
+            // For the moment, use master logic? (No.)
+            // AR_ExpNode *alias_exp = AR_EXP_Clone(exp);
+            // AR_ExpNode *alias_exp = AR_EXP_NewVariableOperandNode(record_map, alias, NULL);
+            // AR_ExpNode *alias_exp = AR_EXP_NewReferenceNode(i);
+            // RecordMap_AssociateAliasWithID(record_map, alias, exp->operand.variadic.entity_alias_idx);
             // RecordMap_LookupAlias(segment->record_map, alias);
         } else {
+            // This expression did not have an alias, so it must be an identifier
             const cypher_astnode_t *ast_exp = cypher_ast_projection_get_expression(projection);
-            const char *identifier = NULL;
-            if (cypher_astnode_type(ast_exp) == CYPHER_AST_IDENTIFIER) {
-                // Retrieve "a" from "RETURN a" or "RETURN a AS e"
-                identifier = cypher_ast_identifier_get_name(ast_exp);
-            } else {
-                assert(false);
-            }
-            exp->operand.variadic.entity_alias = identifier;
-            // exp->operand.variadic.entity_alias_idx = record_id;
+            assert(cypher_astnode_type(ast_exp) == CYPHER_AST_IDENTIFIER);
+            // Retrieve "a" from "RETURN a" or "RETURN a AS e" (theoretically; the latter case is already handled)
+            identifier = cypher_ast_identifier_get_name(ast_exp);
         }
+
+        exp->resolved_name = identifier;
+
         return_expressions = array_append(return_expressions, exp);
     }
 
@@ -145,35 +148,28 @@ AR_ExpNode** _BuildWithExpressions(AST *ast, ExecutionPlanSegment *segment, cons
         const cypher_astnode_t *projection = cypher_ast_with_get_projection(with_clause, i);
         const cypher_astnode_t *ast_exp = cypher_ast_projection_get_expression(projection);
 
-        // Retrieve the AST ID of the entity
-        uint ast_id = AST_GetEntityIDFromReference(ast, ast_exp);
-        uint record_id = RecordMap_FindOrAddASTEntity(segment->record_map, ast, ast_exp);
-
         // Construction an AR_ExpNode to represent this entity.
         AR_ExpNode *exp = AR_EXP_FromExpression(segment->record_map, ast_exp);
-        // Add it to the segment's projections.
-        segment->projections = array_append(segment->projections, exp);
 
-        // If the projection is aliased, add the alias to mappings and Record
-        const char *alias = NULL;
+        // Find the resolved name of the entity - its alias, its identifier if referring to a full entity,
+        // the entity.prop combination ("a.val"), or the function call ("MAX(a.val)").
+        // The WITH clause requires that the resolved name be an alias or identifier.
+        const char *identifier = NULL;
         const cypher_astnode_t *alias_node = cypher_ast_projection_get_alias(projection);
         if (alias_node) {
-            // The projection either has an alias (AS) or is a function call.
-            alias = cypher_ast_identifier_get_name(alias_node);
-            // TODO ?
-            // RecordMap_LookupAlias(segment->record_map, alias);
+            // The projection either has an alias (AS), is a function call, or is a property specification (e.name).
+            /// TODO should issue syntax failure in the latter 2 cases
+            identifier = cypher_ast_identifier_get_name(alias_node);
         } else {
+            // This expression did not have an alias, so it must be an identifier
             const cypher_astnode_t *ast_exp = cypher_ast_projection_get_expression(projection);
-            const char *identifier = NULL;
-            if (cypher_astnode_type(ast_exp) == CYPHER_AST_IDENTIFIER) {
-                // Retrieve "a" from "RETURN a" or "RETURN a AS e"
-                identifier = cypher_ast_identifier_get_name(ast_exp);
-            } else {
-                assert(false);
-            }
-            exp->operand.variadic.entity_alias = identifier;
-            exp->operand.variadic.entity_alias_idx = record_id;
+            assert(cypher_astnode_type(ast_exp) == CYPHER_AST_IDENTIFIER);
+            // Retrieve "a" from "RETURN a" or "RETURN a AS e" (theoretically; the latter case is already handled)
+            identifier = cypher_ast_identifier_get_name(ast_exp);
         }
+
+        exp->resolved_name = identifier;
+
         with_expressions = array_append(with_expressions, exp);
     }
 
@@ -191,8 +187,9 @@ void _ExecutionPlanSegment_BuildTraversalOps(ExecutionPlanSegment *segment, Quer
     if (nelems == 1) {
         // Only one entity is specified - build a node scan.
         const cypher_astnode_t *ast_node = cypher_ast_pattern_path_get_element(path, 0);
-        uint rec_idx = RecordMap_FindOrAddASTEntity(segment->record_map, ast, ast_node);
         Node *n = QueryGraph_GetEntityByASTRef(qg, ast_node);
+        uint ast_id = n->entity->id;
+        uint rec_idx = RecordMap_FindOrAddID(segment->record_map, ast_id);
         if(cypher_ast_node_pattern_nlabels(ast_node) > 0) {
             op = NewNodeByLabelScanOp(n, rec_idx);
         } else {
@@ -214,7 +211,7 @@ void _ExecutionPlanSegment_BuildTraversalOps(ExecutionPlanSegment *segment, Quer
         AlgebraicExpression *to_replace = exps[0];
 
         // Retrieve the AST ID for the source node
-        uint ast_id = AST_GetEntityIDFromReference(ast, exps[0]->src_node);
+        uint ast_id = exps[0]->src_node->entity->id;
         // Convert to a Record ID
         uint record_id = RecordMap_FindOrAddID(segment->record_map, ast_id);
 
@@ -229,8 +226,8 @@ void _ExecutionPlanSegment_BuildTraversalOps(ExecutionPlanSegment *segment, Quer
     } else if (exps[expCount - 1]->op == AL_EXP_UNARY) {
         AlgebraicExpression *to_replace = exps[expCount - 1];
 
-        // Retrieve the AST ID for the source node
-        uint ast_id = AST_GetEntityIDFromReference(ast, exps[0]->src_node);
+        // Retrieve the AST ID for the source node)
+        uint ast_id = exps[0]->src_node->entity->id;
         // Convert to a Record ID
         uint record_id = RecordMap_FindOrAddID(segment->record_map, ast_id);
         op = NewNodeByLabelScanOp(to_replace->src_node, record_id);
@@ -249,7 +246,7 @@ void _ExecutionPlanSegment_BuildTraversalOps(ExecutionPlanSegment *segment, Quer
             selectEntryPoint(exp, ft);
 
             // Retrieve the AST ID for the source node
-            uint ast_id = AST_GetEntityIDFromReference(ast, exps[0]->src_node);
+            uint ast_id = exps[0]->src_node->entity->id;
             // Convert to a Record ID
             uint record_id = RecordMap_FindOrAddID(segment->record_map, ast_id);
 
@@ -276,14 +273,14 @@ void _ExecutionPlanSegment_BuildTraversalOps(ExecutionPlanSegment *segment, Quer
                 // exps[i]->dest_node_idx = exps[i]->src_node_idx;
             } else {
                 // Make sure that all entities are represented in Record
-                ast_id = AST_GetEntityIDFromReference(ast, exps[i]->src_node);
+                uint ast_id = exps[i]->src_node->entity->id;
                 src_node_idx = RecordMap_FindOrAddID(segment->record_map, ast_id);
 
-                ast_id = AST_GetEntityIDFromReference(ast, exps[i]->dest_node);
+                ast_id = exps[i]->dest_node->entity->id;
                 dest_node_idx = RecordMap_FindOrAddID(segment->record_map, ast_id);
 
                 if (exps[i]->edge) {
-                    ast_id = AST_GetEntityIDFromReference(ast, exps[i]->edge);
+                    ast_id = exps[i]->edge->entity->id;
                     edge_idx = RecordMap_FindOrAddID(segment->record_map, ast_id);
                 }
             }
@@ -306,7 +303,7 @@ void _ExecutionPlanSegment_BuildTraversalOps(ExecutionPlanSegment *segment, Quer
             selectEntryPoint(exp, ft);
 
             // Retrieve the AST ID for the destination node
-            uint ast_id = AST_GetEntityIDFromReference(ast, exp->dest_node);
+            uint ast_id = exps[0]->dest_node->entity->id;
             // Convert to a Record ID
             uint record_id = RecordMap_FindOrAddID(segment->record_map, ast_id);
 
@@ -335,14 +332,14 @@ void _ExecutionPlanSegment_BuildTraversalOps(ExecutionPlanSegment *segment, Quer
                 // exps[i]->src_node_idx = exps[i]->dest_node_idx;
             } else {
                 // Make sure that all entities are represented in Record
-                ast_id = AST_GetEntityIDFromReference(ast, exps[i]->src_node);
+                uint ast_id = exps[i]->src_node->entity->id;
                 src_node_idx = RecordMap_FindOrAddID(segment->record_map, ast_id);
 
-                ast_id = AST_GetEntityIDFromReference(ast, exps[i]->dest_node);
+                ast_id = exps[i]->dest_node->entity->id;
                 dest_node_idx = RecordMap_FindOrAddID(segment->record_map, ast_id);
 
                 if (exps[i]->edge) {
-                    ast_id = AST_GetEntityIDFromReference(ast, exps[i]->edge);
+                    ast_id = exps[i]->edge->entity->id;
                     edge_idx = RecordMap_FindOrAddID(segment->record_map, ast_id);
                 }
             }
@@ -407,7 +404,7 @@ void _ExecutionPlanSegment_BuildProjections(ExecutionPlanSegment *segment, AST *
         order_clause = cypher_ast_with_get_order_by(with_clause);
     }
 
-    if (order_clause) segment->order_expressions = _BuildOrderExpressions(segment->record_map, order_clause);
+    if (order_clause) segment->order_expressions = _BuildOrderExpressions(segment->record_map, segment->projections, order_clause);
 
     // TODO tmp
     const cypher_astnode_t *call_clause = AST_GetClause(ast, CYPHER_AST_CALL);
@@ -485,8 +482,7 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
         uint projection_count = array_len(prev_projections);
         for (uint i = 0; i < projection_count; i++) {
             AR_ExpNode *projection = prev_projections[i];
-            // TODO
-            // RecordMap_ExpressionToRecordID(record_map, projection);
+            RecordMap_FindOrAddAlias(record_map, projection->resolved_name);
         }
     }
 

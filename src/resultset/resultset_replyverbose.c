@@ -154,9 +154,9 @@ void ResultSet_ReplyWithVerboseHeader(RedisModuleCtx *ctx, AR_ExpNode **exps) {
     RedisModule_ReplyWithArray(ctx, columns_len);
     for(uint i = 0; i < columns_len; i++) {
         AR_ExpNode *exp = exps[i];
-        char *column_name;
-        AR_EXP_ToString(exp, &column_name);
-        RedisModule_ReplyWithStringBuffer(ctx, column_name, strlen(column_name));
-        rm_free(column_name);
+        // char *column_name;
+        // AR_EXP_ToString(exp, &column_name);
+        RedisModule_ReplyWithStringBuffer(ctx, exp->resolved_name, strlen(exp->resolved_name));
+        // rm_free(column_name);
     }
 }

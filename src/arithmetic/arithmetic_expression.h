@@ -85,6 +85,7 @@ struct AR_ExpNode {
         AR_OpNode op;
     };
     AR_ExpNodeType type;
+    const char *resolved_name;
 };
 
 /* Mathematical functions - numeric */

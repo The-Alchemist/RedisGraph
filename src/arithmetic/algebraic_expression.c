@@ -174,7 +174,7 @@ AlgebraicExpression **_AlgebraicExpression_Intermediate_Expressions(RecordMap *r
         e = QueryGraph_GetEntityByASTRef(q, ast_rel);
         transpose = (cypher_ast_rel_pattern_get_direction(ast_rel) == CYPHER_REL_INBOUND);
 
-        uint edge_idx = RecordMap_LookupEntity(record_map, ast_rel);
+        uint edge_idx = RecordMap_LookupEntityID(record_map, e->entity->id);
         /* If edge is referenced, set expression edge pointer. */
         if (edge_idx != IDENTIFIER_NOT_FOUND) { // TODO referenced edges must be mapped prior to building AlgebraicExpression
             iexp->edge = e;
@@ -224,7 +224,7 @@ AlgebraicExpression **_AlgebraicExpression_Intermediate_Expressions(RecordMap *r
         // Don't build intermediate expression for non-intermediate nodes (not first or last)
         if (intermediate_node(i + 1, nelems) == false) continue;
 
-        dest_node_idx = RecordMap_LookupEntity(record_map, cypher_ast_pattern_path_get_element(path, i + 1));
+        dest_node_idx = RecordMap_LookupEntityID(record_map, dest->entity->id);
         // Don't build intermediate expression if destination node is not referenced
         if (dest_node_idx == NOT_IN_RECORD) continue;
 

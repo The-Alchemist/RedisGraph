@@ -18,6 +18,11 @@ static void _QueryGraph_AddID(QueryGraph *qg, uint id, void *qg_entity) {
     assert(rc == 1);
 }
 
+void _dummyEntity(GraphEntity *ge, uint id) {
+    ge->entity = rm_malloc(sizeof(Entity));
+    ge->entity->id = id;
+}
+
 static void _BuildQueryGraphAddNode(const GraphContext *gc,
                              const AST *ast,
                              const cypher_astnode_t *ast_entity,
@@ -47,8 +52,11 @@ static void _BuildQueryGraphAddNode(const GraphContext *gc,
         /* Create a new node, set its properties, and add it to the graph. */
         n = Node_New(label, alias);
 
+        // Add AST ID to GraphEntity
+        _dummyEntity((GraphEntity*)n, id);
+
         // Add node pointer back into AST mapping using the same ID
-        ASTMap_AddEntity(ast, n, id);
+        // ASTMap_AddEntity(ast, n, id);
         _QueryGraph_AddASTRef(qg, ast_entity, (void*)n);
         // _QueryGraph_AddID(qg, id, (void*)n);
         qg->nodes = array_append(qg->nodes, n);
@@ -111,8 +119,11 @@ static void _BuildQueryGraphAddEdge(const GraphContext *gc,
     }
 
     e = Edge_New(src, dest, reltype, alias);
+    // Add AST ID to GraphEntity
+    _dummyEntity((GraphEntity*)e, id);
+
     // Add edge pointer back into AST mapping using the same ID
-    ASTMap_AddEntity(ast, e, id);
+    // ASTMap_AddEntity(ast, e, id);
 
     //Set edge relation ID.
     if(reltype == NULL) {

@@ -23,13 +23,14 @@ uint RecordMap_GetRecordIDFromReference(RecordMap *map, AST_IDENTIFIER entity);
 uint RecordMap_ReferenceToRecordID(RecordMap *map, AST_IDENTIFIER identifier);
 uint RecordMap_ExpressionToRecordID(RecordMap *map, AR_ExpNode *exp);
 
-uint RecordMap_LookupEntity(const RecordMap *map, AST_IDENTIFIER entity);
 uint RecordMap_LookupAlias(const RecordMap *map, const char *alias);
 uint RecordMap_LookupEntityID(const RecordMap *record_map, uint id);
 
 uint RecordMap_FindOrAddASTEntity(RecordMap *record_map, const AST *ast, const cypher_astnode_t *entity);
 uint RecordMap_FindOrAddID(RecordMap *record_map, uint entity_id);
 uint RecordMap_FindOrAddAlias(RecordMap *record_map, char *alias);
+
+void RecordMap_AssociateAliasWithID(RecordMap *record_map, char *alias, uint id);
 
 RecordMap *RecordMap_New(void);
 void RecordMap_Free(RecordMap *record_map);
