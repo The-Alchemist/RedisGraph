@@ -204,7 +204,7 @@ void AST_BuildEntityMap(AST *ast) {
      * as well as other keys to Record IDs. */
     ast->entity_map = NewTrieMap();
 
-    _ASTMap_CollectAliases(ast, ast->root);
+    _ASTMap_CollectAliases(ast, ast->root); // TODO necessary?
     // _debugWalkTrieMap(ast->entity_map);
 
     // Check every clause in this AST segment

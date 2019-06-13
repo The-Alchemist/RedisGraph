@@ -215,7 +215,7 @@ AST* AST_Build(cypher_parse_result_t *parse_result) {
     AST *ast = rm_malloc(sizeof(AST));
     ast->root = AST_GetBody(parse_result);
     assert(ast->root);
-    AST_BuildEntityMap(ast);
+    if (cypher_astnode_type(ast->root) == CYPHER_AST_QUERY) AST_BuildEntityMap(ast);
 
     return ast;
 }

@@ -84,6 +84,7 @@ ResultSet* NewResultSet(RedisModuleCtx *ctx, bool distinct, bool compact) {
     set->EmitRecord = _ResultSet_SetReplyFormatter(set->compact);
     set->recordCount = 0;    
     set->column_count = 0; // TODO necessary variable?
+    set->exps = NULL;
 
     set->stats.labels_added = 0;
     set->stats.nodes_created = 0;
@@ -96,8 +97,8 @@ ResultSet* NewResultSet(RedisModuleCtx *ctx, bool distinct, bool compact) {
 }
 
 // Initialize the user-facing reply arrays.
-void ResultSet_ReplyWithPreamble(ResultSet *set, AR_ExpNode **exps) {
-    if (exps == NULL || array_len(exps) == 0) {
+void ResultSet_ReplyWithPreamble(ResultSet *set) {
+    if (set->exps == NULL || array_len(set->exps) == 0) {
         // Queries that don't form result sets will only emit statistics
         RedisModule_ReplyWithArray(set->ctx, 1);
         return;

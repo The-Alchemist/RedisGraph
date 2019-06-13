@@ -31,7 +31,7 @@ typedef struct {
 
 ResultSet* NewResultSet(RedisModuleCtx *ctx, bool distinct, bool compact);
 
-void ResultSet_ReplyWithPreamble(ResultSet *set, AR_ExpNode **exps);
+void ResultSet_ReplyWithPreamble(ResultSet *set);
 
 int ResultSet_AddRecord(ResultSet* set, Record r);
 

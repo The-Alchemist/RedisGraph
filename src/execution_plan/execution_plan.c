@@ -491,15 +491,6 @@ void _ExecutionPlanSegment_BuildProjections(ExecutionPlanSegment *segment, AST *
 
 }
 
-// TODO tmp, replace with better logic
-void _initOpRecordMap(OpBase *op, RecordMap *record_map) {
-    if (op == NULL) return;
-    op->record_map = record_map;
-    for (uint i = 0; i < op->childCount; i ++) {
-        _initOpRecordMap(op->children[i], record_map);
-    }
-}
-
 ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext *gc, AST *ast, ResultSet *result_set, AR_ExpNode **prev_projections, OpBase *prev_op) {
 
     // Allocate a new segment
@@ -822,9 +813,6 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
         Vector_Free(sub_trees);
     }
 
-    // TODO tmp, replace with better logic
-    _initOpRecordMap(segment->root, segment->record_map);
-
     return segment;
 }
 
@@ -881,13 +869,9 @@ ExecutionPlan* NewExecutionPlan(RedisModuleCtx *ctx, GraphContext *gc, bool comp
     // const cypher_astnode_t *ret_clause = AST_GetClause(ast, CYPHER_AST_RETURN);
     // TODO what is happening here?
     AR_ExpNode **return_columns = segment->projections;
-    if (segment && segment->projections) {
-        return_columns = segment->projections; // TODO kludge
-        plan->result_set->column_count = array_len(return_columns);
-    }
     if (explain == false) {
         plan->result_set->exps = segment->projections;
-        ResultSet_ReplyWithPreamble(plan->result_set, return_columns);
+        ResultSet_ReplyWithPreamble(plan->result_set);
     }
     // Free current AST segment if it has been constructed here.
     if (ast_segment != ast) {
@@ -927,16 +911,29 @@ void ExecutionPlan_Print(const ExecutionPlan *plan, RedisModuleCtx *ctx) {
     RedisModule_ReplySetArrayLength(ctx, op_count);
 }
 
-void _ExecutionPlanInit(OpBase *root) {
+void _ExecutionPlanInit(OpBase *root, RecordMap *record_map) {
+    // If this op has already been initialized,
+    // we don't need to recurse further.
+    if (root->record_map != NULL) return;
+
+    // Share this ExecutionPlanSegment's record map with the operation.
+    root->record_map = record_map;
+
+    // Initialize the operation if necesary.
     if(root->init) root->init(root);
+
+    // Continue initializing downstream operations.
     for(int i = 0; i < root->childCount; i++) {
-        _ExecutionPlanInit(root->children[i]);
+        _ExecutionPlanInit(root->children[i], record_map);
     }
 }
 
 void ExecutionPlanInit(ExecutionPlan *plan) {
     if(!plan) return;
-    _ExecutionPlanInit(plan->root);
+    for (int i = plan->segment_count - 1; i >= 0; i --) {
+        RecordMap *segment_map = plan->segments[i]->record_map;
+        _ExecutionPlanInit(plan->root, segment_map);
+    }
 }
 
 
