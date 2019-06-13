@@ -52,14 +52,22 @@ Path AllPathsCtx_NextPath(AllPathsCtx *ctx) {
             // Get a new frontier.
 			Node frontier = array_pop(ctx->levels[depth]);
 
+            /* See if frontier is already on path, 
+             * it is OK for a path to contain an entity twice, 
+             * such as in the case of a cycle, but in such case we
+             * won't expand frontier.
+             * i.e. closing a cycle and continuing traversal. */
+            bool frontierAlreadyOnPath = Path_containsNode(ctx->path, &frontier);
+
             // Add frontier to path.
             ctx->path = Path_append(ctx->path, frontier);
 
             // Update path depth.
             depth++;
 
-            // Introduce neighbors only if path depth < maximum path length.
-            if(depth < ctx->maxLen) {
+            /* Introduce neighbors only if path depth < maximum path length.
+             * and frontier wasn't already expanded. */
+            if(depth < ctx->maxLen && !frontierAlreadyOnPath) {
                 // Get frontier neighbors.
                 Edge *neighbors = array_new(Edge, 32);
                 for(int i = 0; i < ctx->relationCount; i++) {
@@ -77,8 +85,7 @@ Path AllPathsCtx_NextPath(AllPathsCtx *ctx) {
                         Graph_GetNode(ctx->g, Edge_GetSrcNodeID(neighbors+i), &neighbor);
                     }
 
-                    if(!Path_containsNode(ctx->path, &neighbor))
-                        _AllPathsCtx_AddNodeToLevel(ctx, depth, &neighbor);
+                    _AllPathsCtx_AddNodeToLevel(ctx, depth, &neighbor);
                 }
                 array_free(neighbors);
             }
