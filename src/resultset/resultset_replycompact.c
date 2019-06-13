@@ -168,7 +168,9 @@ void ResultSet_ReplyWithCompactHeader(RedisModuleCtx *ctx, AR_ExpNode **exps, Re
            Lookup aliases in AST?
            Lookup in first Record
            */
-        if(exp->type == AR_EXP_OPERAND && exp->operand.type == AR_EXP_VARIADIC && exp->operand.variadic.entity_prop == NULL) {
+        if (r == NULL) { // TODO bad kludge for when we are emitting no records but need to emit a header
+            t = COLUMN_SCALAR;
+        } else if(exp->type == AR_EXP_OPERAND && exp->operand.type == AR_EXP_VARIADIC && exp->operand.variadic.entity_prop == NULL) {
             uint rec_idx = exp->operand.variadic.entity_alias_idx;
             RecordEntryType record_type = Record_GetType(r, rec_idx);
             switch (record_type) {
