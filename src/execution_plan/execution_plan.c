@@ -141,7 +141,7 @@ AR_ExpNode** _BuildReturnExpressions(RecordMap *record_map, const cypher_astnode
     return return_expressions;
 }
 
-AR_ExpNode** _BuildWithExpressions(AST *ast, ExecutionPlanSegment *segment, const cypher_astnode_t *with_clause) {
+AR_ExpNode** _BuildWithExpressions(RecordMap *record_map, const cypher_astnode_t *with_clause) {
     uint count = cypher_ast_with_nprojections(with_clause);
     AR_ExpNode **with_expressions = array_new(AR_ExpNode*, count);
     for (uint i = 0; i < count; i++) {
@@ -149,7 +149,7 @@ AR_ExpNode** _BuildWithExpressions(AST *ast, ExecutionPlanSegment *segment, cons
         const cypher_astnode_t *ast_exp = cypher_ast_projection_get_expression(projection);
 
         // Construction an AR_ExpNode to represent this entity.
-        AR_ExpNode *exp = AR_EXP_FromExpression(segment->record_map, ast_exp);
+        AR_ExpNode *exp = AR_EXP_FromExpression(record_map, ast_exp);
 
         // Find the resolved name of the entity - its alias, its identifier if referring to a full entity,
         // the entity.prop combination ("a.val"), or the function call ("MAX(a.val)").
@@ -175,6 +175,80 @@ AR_ExpNode** _BuildWithExpressions(AST *ast, ExecutionPlanSegment *segment, cons
 
     return with_expressions;
 
+}
+
+AR_ExpNode** _BuildCallProjections(RecordMap *record_map, const cypher_astnode_t *call_clause) {
+    // Handle yield entities
+    uint yield_count = cypher_ast_call_nprojections(call_clause);
+    AR_ExpNode **expressions = array_new(AR_ExpNode*, yield_count);
+
+    for (uint i = 0; i < yield_count; i ++) {
+        const cypher_astnode_t *projection = cypher_ast_call_get_projection(call_clause, i);
+        const cypher_astnode_t *ast_exp = cypher_ast_projection_get_expression(projection);
+
+        // Construction an AR_ExpNode to represent this entity.
+        AR_ExpNode *exp = AR_EXP_FromExpression(record_map, ast_exp);
+
+        const char *identifier = NULL;
+        const cypher_astnode_t *alias_node = cypher_ast_projection_get_alias(projection);
+        if (alias_node) {
+            // The projection either has an alias (AS), is a function call, or is a property specification (e.name).
+            identifier = cypher_ast_identifier_get_name(alias_node);
+        } else {
+            // This expression did not have an alias, so it must be an identifier
+            const cypher_astnode_t *ast_exp = cypher_ast_projection_get_expression(projection);
+            assert(cypher_astnode_type(ast_exp) == CYPHER_AST_IDENTIFIER);
+            // Retrieve "a" from "RETURN a" or "RETURN a AS e" (theoretically; the latter case is already handled)
+            identifier = cypher_ast_identifier_get_name(ast_exp);
+        }
+
+        exp->resolved_name = identifier;
+
+        expressions = array_append(expressions, exp);
+    }
+
+    // If the procedure call is missing its yield part, include procedure outputs. 
+    if (yield_count == 0) {
+        const char *proc_name = cypher_ast_proc_name_get_value(cypher_ast_call_get_proc_name(call_clause));
+        ProcedureCtx *proc = Proc_Get(proc_name);
+        assert(proc);
+
+        unsigned int output_count = array_len(proc->output);
+        for (uint i = 0; i < output_count; i++) {
+            const char *name = proc->output[i]->name;
+
+            // TODO the 'name' variable doesn't have an AST ID, so an assertion in
+            // AR_EXP_NewVariableOperandNode() fails without this call. Consider options.
+            ASTMap_FindOrAddAlias(AST_GetFromTLS(), name, IDENTIFIER_NOT_FOUND);
+            AR_ExpNode *exp = AR_EXP_NewVariableOperandNode(record_map, name, NULL);
+            exp->resolved_name = name; // TODO kludge?
+            expressions = array_append(expressions, exp);
+        }
+    }
+
+    return expressions;
+}
+
+const char** _BuildCallArguments(RecordMap *record_map, const cypher_astnode_t *call_clause) {
+    // Handle argument entities
+    uint arg_count = cypher_ast_call_narguments(call_clause);
+    // if (expressions == NULL) expressions = array_new(AR_ExpNode*, arg_count);
+    const char **arguments = array_new(const char*, arg_count);
+    for (uint i = 0; i < arg_count; i ++) {
+
+        const cypher_astnode_t *ast_exp = cypher_ast_call_get_argument(call_clause, i);
+
+        // Construction an AR_ExpNode to represent this entity.
+        // AR_ExpNode *exp = AR_EXP_FromExpression(record_map, ast_exp);
+
+        const cypher_astnode_t *identifier_node = cypher_ast_projection_get_alias(ast_exp);
+        const char *identifier = cypher_ast_identifier_get_name(identifier_node);
+
+        arguments = array_append(arguments, identifier);
+        // expressions = array_append(expressions, exp);
+    }
+
+    return arguments;
 }
 
 /* Given an AST path, construct a series of scans and traversals to model it. */
@@ -400,60 +474,15 @@ void _ExecutionPlanSegment_BuildProjections(ExecutionPlanSegment *segment, AST *
         segment->projections = _BuildReturnExpressions(segment->record_map, ret_clause);
         order_clause = cypher_ast_return_get_order_by(ret_clause);
     } else if (with_clause) {
-        segment->projections = _BuildWithExpressions(ast, segment, with_clause);
+        segment->projections = _BuildWithExpressions(segment->record_map, with_clause);
         order_clause = cypher_ast_with_get_order_by(with_clause);
     }
 
     if (order_clause) segment->order_expressions = _BuildOrderExpressions(segment->record_map, segment->projections, order_clause);
 
-    // TODO tmp
-    const cypher_astnode_t *call_clause = AST_GetClause(ast, CYPHER_AST_CALL);
+    // const cypher_astnode_t *call_clause = AST_GetClause(ast, CYPHER_AST_CALL);
     // if(call_clause) {
-        // uint yield_count = cypher_ast_call_nprojections(call_clause);
-        // if (segment->projections == NULL) segment->projections = array_new(AR_ExpNode*, yield_count);
-        // for (uint i = 0; i < yield_count; i ++) {
-            // // type == CYPHER_AST_PROJECTION
-            // const cypher_astnode_t *ast_yield = cypher_ast_call_get_projection(call_clause, i);
-            // const cypher_astnode_t *yield_alias = cypher_ast_projection_get_alias(ast_yield);
-
-            // AR_ExpNode *yield;
-            // char *yield_str;
-            // // TODO all tmp
-            // if (yield_alias == NULL) {
-                // const cypher_astnode_t *ast_yield_exp = cypher_ast_projection_get_expression(ast_yield);
-                // yield = AR_EXP_FromExpression(ast, ast_yield_exp);
-                // AR_EXP_ToString(yield, &yield_str);
-                // AST_RecordAccommodateExpression(ast, yield);
-                // ASTMap_AddEntity(ast, ast_yield_exp, yield);
-                // ASTMap_FindOrAddAlias(ast, yield_str, yield);
-                // yield->record_idx = AST_AddRecordEntry(ast);
-            // } else {
-                // yield_str = rm_strdup(cypher_ast_identifier_get_name(yield_alias));
-                // yield = AST_GetEntityFromAlias(ast, yield_str);
-                // AST_RecordAccommodateExpression(ast, yield);
-            // }
-            // segment->projections = array_append(segment->projections, yield); // TODO tmp, adds yield to return exps
-        // }
-
-        /* Incase procedure call is missing its yield part
-         * include procedure outputs. */
-        // if (yield_count == 0) {
-            // const char *proc_name = cypher_ast_proc_name_get_value(cypher_ast_call_get_proc_name(call_clause));
-            // ProcedureCtx *proc = Proc_Get(proc_name);
-            // assert(proc);
-
-            // unsigned int output_count = array_len(proc->output);
-            // for(int i = 0; i < output_count; i++) {
-                // AR_ExpNode *exp = AR_EXP_NewAnonymousEntity(AST_AddRecordEntry(ast));
-                // exp->operand.variadic.entity_alias = strdup(proc->output[i]->name);
-                // exp->operand.variadic.entity_alias_idx = exp->record_idx;
-                // AST_RecordAccommodateExpression(ast, exp);
-                // // ASTMap_AddEntity(ast, ast_yield_exp, yield);
-                // ASTMap_FindOrAddAlias(ast, proc->output[i]->name, exp);
-                // // yield->record_idx = AST_AddRecordEntry(ast);
-                // segment->projections = array_append(segment->projections, exp);
-            // }
-        // }
+        // segment->projections = _BuildCallExpressions(segment->record_map, segment->projections, call_clause);
     // }
 
 }
@@ -486,7 +515,7 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
         }
     }
 
-    // Build projections from this AST's WITH, RETURN, ORDER, and CALL clauses
+    // Build projections from this AST's WITH, RETURN, and ORDER clauses
     _ExecutionPlanSegment_BuildProjections(segment, ast);
 
     Vector *ops = NewVector(OpBase*, 1);
@@ -501,71 +530,28 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
 
 
     const cypher_astnode_t *call_clause = AST_GetClause(ast, CYPHER_AST_CALL);
-    // TODO
-    // if(call_clause) {
-        // // A call clause has a procedure name, 0+ arguments (parenthesized expressions), and a projection if YIELD is included
-        // const char *proc_name = cypher_ast_proc_name_get_value(cypher_ast_call_get_proc_name(call_clause));
-        // uint arg_count = cypher_ast_call_narguments(call_clause);
-        // char **arguments = array_new(char*, arg_count);
-        // for (uint i = 0; i < arg_count; i ++) {
-            // const cypher_astnode_t *ast_arg = cypher_ast_call_get_argument(call_clause, i);
-            // AR_ExpNode *arg = AR_EXP_FromExpression(ast, ast_arg);
-            // char *arg_str;
-            // // TODO tmp, leak
-            // AR_EXP_ToString(arg, &arg_str);
-            // AST_RecordAccommodateExpression(ast, arg);
-            // ASTMap_AddEntity(ast, ast_arg, arg);
-            // ASTMap_FindOrAddAlias(ast, arg_str, arg);
-            // arguments = array_append(arguments, arg_str);
-        // }
+    if(call_clause) {
+        // A call clause has a procedure name, 0+ arguments (parenthesized expressions), and a projection if YIELD is included
+        const char *proc_name = cypher_ast_proc_name_get_value(cypher_ast_call_get_proc_name(call_clause));
+        const char **arguments = _BuildCallArguments(record_map, call_clause);
+        AR_ExpNode **yield_exps = _BuildCallProjections(record_map, call_clause);
+        uint yield_count = array_len(yield_exps);
+        const char **yields = array_new(const char *, yield_count);
+        if (segment->projections == NULL) segment->projections = array_new(AR_ExpNode*, yield_count);
+        uint *call_modifies = array_new(uint, yield_count);
+        for (uint i = 0; i < yield_count; i ++) {
+            // TODO revisit this
+            // Add yielded expressions to segment projections.
+            segment->projections = array_append(segment->projections, yield_exps[i]);
+            // Track the names of yielded variables.
+            yields = array_append(yields, yield_exps[i]->resolved_name);
+            // Track which variables are modified by this operation.
+            call_modifies = array_append(call_modifies, yield_exps[i]->operand.variadic.entity_alias_idx);
+        }
 
-        // uint yield_count = cypher_ast_call_nprojections(call_clause);
-        // char **yields = array_new(char*, yield_count);
-        // uint *modified = array_new(char*, yield_count);
-        // // if (segment->projections == NULL) segment->projections = array_new(AR_ExpNode*, yield_count);
-        // AR_ExpNode *yield;
-        // char *yield_str;
-        // for (uint i = 0; i < yield_count; i ++) {
-            // // type == CYPHER_AST_PROJECTION
-            // const cypher_astnode_t *ast_yield = cypher_ast_call_get_projection(call_clause, i);
-            // const cypher_astnode_t *yield_alias = cypher_ast_projection_get_alias(ast_yield);
-
-            // // TODO all tmp
-            // if (yield_alias == NULL) {
-                // const cypher_astnode_t *ast_yield_exp = cypher_ast_projection_get_expression(ast_yield);
-                // yield = AST_GetEntity(ast, ast_yield_exp);
-                // // yield = AR_EXP_FromExpression(ast, ast_yield_exp);
-                // AR_EXP_ToString(yield, &yield_str);
-                // // AST_RecordAccommodateExpression(ast, yield);
-                // // ASTMap_AddEntity(ast, ast_yield_exp, yield);
-                // // ASTMap_FindOrAddAlias(ast, yield_str, yield);
-                // // yield->record_idx = AST_AddRecordEntry(ast);
-            // } else {
-                // yield_str = rm_strdup(cypher_ast_identifier_get_name(yield_alias));
-                // yield = AST_GetEntityFromAlias(ast, yield_str);
-                // AST_RecordAccommodateExpression(ast, yield);
-            // }
-            // // segment->projections = array_append(segment->projections, yield); // TODO tmp, adds yield to return exps
-            // yields = array_append(yields, yield_str);
-            // modified = array_append(modified, yield->record_idx);
-        // }
-
-        /* Incase procedure call is missing its yield part
-         * include procedure outputs. */
-        // if (yield_count == 0) {
-            // ProcedureCtx *proc = Proc_Get(proc_name);
-            // unsigned int output_count = array_len(proc->output);
-            // for(int i = 0; i < output_count; i++) {
-                // char *output_name = proc->output[i]->name;
-                // yield = AST_GetEntityFromAlias(ast, output_name);
-                // AR_EXP_ToString(yield, &yield_str);
-                // yields = array_append(yields, yield_str);
-                // modified = array_append(modified, yield->record_idx);
-            // }
-        // }
-        // OpBase *opProcCall = NewProcCallOp(proc_name, arguments, yields, modified, ast);
-        // Vector_Push(ops, opProcCall);
-    // }
+        OpBase *opProcCall = NewProcCallOp(proc_name, arguments, yields, call_modifies);
+        Vector_Push(ops, opProcCall);
+    }
 
     const cypher_astnode_t **match_clauses = AST_CollectReferencesInRange(ast, CYPHER_AST_MATCH);
     uint match_count = array_len(match_clauses);

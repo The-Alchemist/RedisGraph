@@ -109,7 +109,7 @@ AR_ExpNode* AR_EXP_NewVariableFromID(uint id, const char *prop) {
 }
 
 AR_ExpNode* AR_EXP_NewVariableOperandNode(const RecordMap *record_map, const char *alias, const char *prop) {
-    assert(false);
+    // assert(false);
     AR_ExpNode *node = rm_malloc(sizeof(AR_ExpNode));
     node->type = AR_EXP_OPERAND;
     node->operand.type = AR_EXP_VARIADIC;

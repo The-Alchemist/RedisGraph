@@ -51,10 +51,9 @@ static void _yield(OpProcCall *op, SIValue *proc_output, Record r) {
     }
 }
 
-OpBase* NewProcCallOp(const char *procedure, char **args, char **output, uint *modifies, AST *ast) {
+OpBase* NewProcCallOp(const char *procedure, const char **args, const char **output, uint *modifies) {
     assert(procedure);
     OpProcCall *op = malloc(sizeof(OpProcCall));
-    op->ast = ast;
     op->args = args;
     op->output = output;
     op->procedure = Proc_Get(procedure);

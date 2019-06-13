@@ -8,7 +8,7 @@
 #include "../util/rmalloc.h"
 #include <assert.h>
 
-uint* _BuildMapValue(uint id) {
+static uint* _BuildMapValue(uint id) {
     // TODO so many unnecessary allocs
     uint *id_ptr = rm_malloc(sizeof(uint));
     *id_ptr = id;

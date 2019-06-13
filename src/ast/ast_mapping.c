@@ -15,6 +15,12 @@
 // AST Map Construction
 //------------------------------------------------------------------------------
 
+static uint* _BuildMapValue(uint id) {
+    uint *id_ptr = rm_malloc(sizeof(uint));
+    *id_ptr = id;
+    return id_ptr;
+}
+
 /* A path is comprised of 1 or more node/relation patterns, with even offsets
  * corresponding to nodes and odd corresponding to edges:
  * (0)-[1]->(2) */
@@ -90,6 +96,8 @@ static void _AST_MapExpression(AST *ast, const cypher_astnode_t *expr) {
         for (uint i = 0; i < nchildren; i ++) {
             _AST_MapExpression(ast, cypher_ast_comparison_get_argument(expr, i));
         }
+    } else if (type == CYPHER_AST_PROC_NAME) {
+        return;
     } else if (type == CYPHER_AST_INTEGER ||
                type == CYPHER_AST_FLOAT   ||
                type == CYPHER_AST_STRING  ||
@@ -137,12 +145,10 @@ uint ASTMap_AddEntity(const AST *ast, AST_IDENTIFIER identifier, uint id) {
     if (id == IDENTIFIER_NOT_FOUND) {
         id = ast->entity_map->cardinality;
     }
-    // TODO somewhat wasteful, do we need to allocate values?
-    uint *id_ptr = rm_malloc(sizeof(uint));
-    *id_ptr = id;
+    uint *id_ptr = _BuildMapValue(id);
     TrieMap_Add(ast->entity_map, (char*)&identifier, sizeof(identifier), id_ptr, TrieMap_DONT_CARE_REPLACE);
 
-    return *id_ptr;
+    return id;
 }
 
 // Add alias if it has not already been mapped and return ID
@@ -154,10 +160,10 @@ uint ASTMap_FindOrAddAlias(const AST *ast, const char *alias, uint id) {
     if (id == IDENTIFIER_NOT_FOUND) {
         id = ast->entity_map->cardinality;
     }
-    uint *id_ptr = rm_malloc(sizeof(uint));
+    uint *id_ptr = _BuildMapValue(id);
     TrieMap_Add(ast->entity_map, (char*)alias, strlen(alias), id_ptr, TrieMap_DONT_CARE_REPLACE);
 
-    return *id_ptr;
+    return id;
 }
 
 void _ASTMap_CollectAliases(AST *ast, const cypher_astnode_t *entity) {
@@ -167,8 +173,7 @@ void _ASTMap_CollectAliases(AST *ast, const cypher_astnode_t *entity) {
         const char *identifier = cypher_ast_identifier_get_name(entity);
         uint *v = TrieMap_Find(ast->entity_map, (char*)identifier, strlen(identifier));
         if (v == TRIEMAP_NOTFOUND) {
-            uint *id_ptr = rm_malloc(sizeof(uint));
-            *id_ptr = ast->entity_map->cardinality;
+            uint *id_ptr = _BuildMapValue(ast->entity_map->cardinality);
             TrieMap_Add(ast->entity_map, (char*)identifier, strlen(identifier), id_ptr, TrieMap_DONT_CARE_REPLACE);
         }
         return;
@@ -228,6 +233,14 @@ void AST_BuildEntityMap(AST *ast) {
             uint projection_count = cypher_ast_return_nprojections(clause);
             for (uint i = 0 ; i < projection_count; i ++) {
                 const cypher_astnode_t *projection = cypher_ast_return_get_projection(clause, i);
+                _AST_MapProjection(ast, projection);
+            }
+        } else if (type == CYPHER_AST_CALL) {
+            const char *proc_name = cypher_ast_proc_name_get_value(cypher_ast_call_get_proc_name(clause));
+            ASTMap_FindOrAddAlias(ast, proc_name, IDENTIFIER_NOT_FOUND);
+            uint projection_count = cypher_ast_call_nprojections(clause);
+            for (uint i = 0 ; i < projection_count; i ++) {
+                const cypher_astnode_t *projection = cypher_ast_call_get_projection(clause, i);
                 _AST_MapProjection(ast, projection);
             }
         } else {
