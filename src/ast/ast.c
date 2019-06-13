@@ -182,6 +182,28 @@ const cypher_astnode_t** AST_CollectReferencesInRange(const AST *ast, cypher_ast
     return found;
 }
 
+void _AST_CollectAliases(TrieMap *aliases, const cypher_astnode_t *entity) {
+    if (entity == NULL) return;
+
+    if (cypher_astnode_type(entity) == CYPHER_AST_IDENTIFIER) {
+        const char *identifier = cypher_ast_identifier_get_name(entity);
+        TrieMap_Add(aliases, (char*)identifier, strlen(identifier), NULL, TrieMap_DONT_CARE_REPLACE);
+        return;
+    }
+
+    uint nchildren = cypher_astnode_nchildren(entity);
+    for (uint i = 0; i < nchildren; i ++) {
+        _AST_CollectAliases(aliases, cypher_astnode_get_child(entity, i));
+    }
+}
+
+TrieMap* AST_CollectAliases(AST *ast) {
+    TrieMap *aliases = NewTrieMap();
+    _AST_CollectAliases(aliases, ast->root);
+
+    return aliases;
+}
+
 const cypher_astnode_t* AST_GetBody(const cypher_parse_result_t *result) {
     const cypher_astnode_t *statement = cypher_parse_result_get_root(result, 0);
     assert(statement && cypher_astnode_type(statement) == CYPHER_AST_STATEMENT);

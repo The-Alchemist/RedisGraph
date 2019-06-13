@@ -62,57 +62,17 @@ static void _ResultSet_ReplayStats(RedisModuleCtx* ctx, ResultSet* set) {
     }
 }
 
-static Column* _NewColumn(char *name, char *alias) {
-    Column* column = rm_malloc(sizeof(Column));
-    column->name = name;
-    column->alias = alias;
-    return column;
-}
-
-static void _Column_Free(Column* column) {
-    /* No need to free alias,
-     * it will be freed as part of AST_Free. */
-    rm_free(column->name);
-    rm_free(column);
-}
-
-static void _ResultSet_CreateHeader(ResultSet *set, AR_ExpNode **exps) {
+static void _ResultSet_ReplyWithHeader(ResultSet *set, Record r) {
     assert(set->recordCount == 0);
 
-    set->column_count = array_len(exps);
-    // ResultSetHeader* header = rm_malloc(sizeof(ResultSetHeader));
+    set->column_count = array_len(set->exps);
 
-    // header->columns_len = array_len(exps);
-    // header->columns = rm_malloc(sizeof(Column*) * header->columns_len);
-
-    // for(int i = 0; i < header->columns_len; i++) {
-        // AR_ExpNode *ar_exp = exps[i];
-
-        // char *column_name;
-        // AR_EXP_ToString(ar_exp, &column_name);
-        // Column *column = _NewColumn(column_name, NULL);
-        // header->columns[i] = column;
-    // }
-
-    // set->header = header;
     /* Replay with table header. */
     if (set->compact) {
-        ResultSet_ReplyWithCompactHeader(set->ctx, exps);
+        ResultSet_ReplyWithCompactHeader(set->ctx, set->exps, r);
     } else {
-        ResultSet_ReplyWithVerboseHeader(set->ctx, exps); 
+        ResultSet_ReplyWithVerboseHeader(set->ctx, set->exps); 
     }
-}
-
-static void _ResultSetHeader_Free(ResultSetHeader* header) {
-    if(!header) return;
-
-    for(int i = 0; i < header->columns_len; i++) _Column_Free(header->columns[i]);
-
-    if(header->columns != NULL) {
-        rm_free(header->columns);
-    }
-
-    rm_free(header);
 }
 
 ResultSet* NewResultSet(RedisModuleCtx *ctx, bool distinct, bool compact) {
@@ -123,10 +83,7 @@ ResultSet* NewResultSet(RedisModuleCtx *ctx, bool distinct, bool compact) {
     set->compact = compact;
     set->EmitRecord = _ResultSet_SetReplyFormatter(set->compact);
     set->recordCount = 0;    
-    set->column_count = 0;
-    set->header = NULL;
-    set->bufferLen = 2048;
-    set->buffer = malloc(set->bufferLen);
+    set->column_count = 0; // TODO necessary variable?
 
     set->stats.labels_added = 0;
     set->stats.nodes_created = 0;
@@ -149,13 +106,21 @@ void ResultSet_ReplyWithPreamble(ResultSet *set, AR_ExpNode **exps) {
     // header, records, statistics
     RedisModule_ReplyWithArray(set->ctx, 3);
 
-    _ResultSet_CreateHeader(set, exps);
+    // _ResultSet_ReplyWithHeader(set, exps);
 
-    // We don't know at this point the number of records we're about to return.
-    RedisModule_ReplyWithArray(set->ctx, REDISMODULE_POSTPONED_ARRAY_LEN);
+    // // We don't know at this point the number of records we're about to return.
+    // RedisModule_ReplyWithArray(set->ctx, REDISMODULE_POSTPONED_ARRAY_LEN);
 }
 
 int ResultSet_AddRecord(ResultSet *set, Record r) {
+    // TODO tmp, think
+    if (set->recordCount == 0) {
+        // Replay header here for the moment
+        _ResultSet_ReplyWithHeader(set, r);
+
+        // We don't know at this point the number of records we're about to return.
+        RedisModule_ReplyWithArray(set->ctx, REDISMODULE_POSTPONED_ARRAY_LEN);
+    }
     set->recordCount++;
 
     // Output the current record using the defined formatter
@@ -168,8 +133,7 @@ void ResultSet_Replay(ResultSet* set) {
     // If we have emitted records, set the number of elements in the
     // preceding array
     if (set->column_count > 0) {
-        size_t resultset_size = set->recordCount;
-        RedisModule_ReplySetArrayLength(set->ctx, resultset_size);
+        RedisModule_ReplySetArrayLength(set->ctx, set->recordCount);
     }
     _ResultSet_ReplayStats(set->ctx, set);
 }
@@ -177,7 +141,5 @@ void ResultSet_Replay(ResultSet* set) {
 void ResultSet_Free(ResultSet *set) {
     if(!set) return;
 
-    free(set->buffer);
-    if(set->header) _ResultSetHeader_Free(set->header);
     free(set);
 }

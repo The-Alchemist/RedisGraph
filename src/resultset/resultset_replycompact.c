@@ -28,7 +28,7 @@ static inline void _ResultSet_ReplyWithValueType(RedisModuleCtx *ctx, const SIVa
     RedisModule_ReplyWithLongLong(ctx, _mapValueType(v));
 }
 
-void ResultSet_CompactReplyWithSIValue(RedisModuleCtx *ctx, GraphContext *gc, const SIValue v) {
+void ResultSet_CompactReplyWithSIValue(RedisModuleCtx *ctx, const SIValue v) {
     _ResultSet_ReplyWithValueType(ctx, v);
     // Emit the actual value, then the value type (to facilitate client-side parsing)
     switch (SI_TYPE(v)) {
@@ -66,7 +66,7 @@ static void _ResultSet_CompactReplyWithProperties(RedisModuleCtx *ctx, GraphCont
         // Emit the string index
         RedisModule_ReplyWithLongLong(ctx, prop.id);
         // Emit the value
-        ResultSet_CompactReplyWithSIValue(ctx, gc, prop.value);
+        ResultSet_CompactReplyWithSIValue(ctx, prop.value);
     }
 }
 
@@ -147,7 +147,7 @@ void ResultSet_EmitCompactRecord(RedisModuleCtx *ctx, GraphContext *gc, const Re
                 break;
             default:
                 RedisModule_ReplyWithArray(ctx, 2); // Reply with array with space for type and value
-                ResultSet_CompactReplyWithSIValue(ctx, gc, Record_GetScalar(r, i));
+                ResultSet_CompactReplyWithSIValue(ctx, Record_GetScalar(r, i));
         }
     }
 }
@@ -155,7 +155,7 @@ void ResultSet_EmitCompactRecord(RedisModuleCtx *ctx, GraphContext *gc, const Re
 // For every column in the header, emit a 2-array that specifies
 // the column alias followed by an enum denoting what type
 // (scalar, node, or relation) it holds.
-void ResultSet_ReplyWithCompactHeader(RedisModuleCtx *ctx, AR_ExpNode **exps) {
+void ResultSet_ReplyWithCompactHeader(RedisModuleCtx *ctx, AR_ExpNode **exps, Record r) {
     uint columns_len = array_len(exps);
     RedisModule_ReplyWithArray(ctx, columns_len);
     for(uint i = 0; i < columns_len; i++) {
@@ -163,15 +163,24 @@ void ResultSet_ReplyWithCompactHeader(RedisModuleCtx *ctx, AR_ExpNode **exps) {
         RedisModule_ReplyWithArray(ctx, 2);
         ColumnTypeUser t;
         // First, emit the column type enum
-        // TODO improve logic for this
+        /* TODO options:
+           Lookup aliases in QueryGraph.
+           Lookup aliases in AST?
+           Lookup in first Record
+           */
         if(exp->type == AR_EXP_OPERAND && exp->operand.type == AR_EXP_VARIADIC && exp->operand.variadic.entity_prop == NULL) {
-            // if (exp->operand.variadic.entity_type == SCHEMA_NODE) {
-                // t = COLUMN_NODE;
-            // } else if (exp->operand.variadic.entity_type == SCHEMA_EDGE) {
-                // t = COLUMN_RELATION;
-            // } else {
-                // t = COLUMN_SCALAR;
-            // }
+            uint rec_idx = exp->operand.variadic.entity_alias_idx;
+            RecordEntryType record_type = Record_GetType(r, rec_idx);
+            switch (record_type) {
+                case REC_TYPE_NODE:
+                    t = COLUMN_NODE;
+                    break;
+                case REC_TYPE_EDGE:
+                    t = COLUMN_RELATION;
+                    break;
+                default:
+                    t = COLUMN_SCALAR;
+            }
         } else {
             t = COLUMN_SCALAR;
         }
@@ -179,9 +188,6 @@ void ResultSet_ReplyWithCompactHeader(RedisModuleCtx *ctx, AR_ExpNode **exps) {
         RedisModule_ReplyWithLongLong(ctx, t);
 
         // Second, emit the identifier string associated with the column
-        char *column_name;
-        AR_EXP_ToString(exp, &column_name);
-        RedisModule_ReplyWithStringBuffer(ctx, column_name, strlen(column_name));
-        rm_free(column_name);
+        RedisModule_ReplyWithStringBuffer(ctx, exp->resolved_name, strlen(exp->resolved_name));
     }
 }

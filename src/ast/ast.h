@@ -28,7 +28,7 @@ typedef struct AR_ExpNode AR_ExpNode;
 
 typedef struct {
     const cypher_astnode_t *root;     // Root element of libcypher-parser AST
-    TrieMap *entity_map;              // Mapping of aliases and AST node pointers to AR_ExpNodes (TODO replace with record IDs)
+    TrieMap *entity_map;              // Mapping of aliases and AST node pointers to AST IDs
 } AST;
 
 // AST clause validations.
@@ -61,6 +61,8 @@ uint AST_GetClauseCount(const AST *ast, cypher_astnode_type_t clause_type);
 uint AST_NumClauses(const AST *ast);
 
 const cypher_astnode_t** AST_CollectReferencesInRange(const AST *ast, cypher_astnode_type_t type);
+
+TrieMap* AST_CollectAliases(AST *ast);
 
 const cypher_astnode_t* AST_GetBody(const cypher_parse_result_t *result);
 

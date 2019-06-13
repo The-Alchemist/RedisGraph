@@ -28,20 +28,24 @@ static ResultSet* _prepare_resultset(RedisModuleCtx *ctx, AST *ast, bool compact
     return set;
 }
 
-AR_ExpNode** _ReturnExpandAll() {
-    // TODO
-    // uint identifier_count = array_len(ast->defined_entities);
-    // AR_ExpNode **return_expressions = array_new(AR_ExpNode*, identifier_count);
+AR_ExpNode** _ReturnExpandAll(RecordMap *record_map) {
+    AST *ast = AST_GetFromTLS();
 
-    // for (uint i = 0; i < identifier_count; i ++) {
-        // AR_ExpNode *entity = ast->defined_entities[i];
-        // const char *alias = entity->operand.variadic.entity_alias;
-        // if (alias) {
-            // return_expressions = array_append(return_expressions, entity);
-        // }
-    // }
-    // return return_expressions;
-    return NULL;
+    TrieMap *aliases = AST_CollectAliases(ast);
+    uint count = aliases->cardinality;
+
+    AR_ExpNode **return_expressions = array_new(AR_ExpNode*, count);
+    void *value;
+    tm_len_t len;
+    char *key;
+    TrieMapIterator *it = TrieMap_Iterate(aliases, "", 0);
+    while(TrieMapIterator_Next(it, &key, &len, &value)) {
+        AR_ExpNode *exp = AR_EXP_NewVariableOperandNode(record_map, (const char *)key, NULL);
+        exp->resolved_name = key;
+        return_expressions = array_append(return_expressions, exp);
+    }
+
+    return return_expressions;
 }
 
 // Handle ORDER entities
@@ -97,7 +101,7 @@ AR_ExpNode** _BuildOrderExpressions(RecordMap *record_map, AR_ExpNode **projecti
 AR_ExpNode** _BuildReturnExpressions(RecordMap *record_map, const cypher_astnode_t *ret_clause) {
     // Query is of type "RETURN *",
     // collect all defined identifiers and create return elements for them
-    if (cypher_ast_return_has_include_existing(ret_clause)) return _ReturnExpandAll();
+    if (cypher_ast_return_has_include_existing(ret_clause)) return _ReturnExpandAll(record_map);
 
     uint count = cypher_ast_return_nprojections(ret_clause);
     AR_ExpNode **return_expressions = array_new(AR_ExpNode*, count);
@@ -881,7 +885,10 @@ ExecutionPlan* NewExecutionPlan(RedisModuleCtx *ctx, GraphContext *gc, bool comp
         return_columns = segment->projections; // TODO kludge
         plan->result_set->column_count = array_len(return_columns);
     }
-    if (explain == false) ResultSet_ReplyWithPreamble(plan->result_set, return_columns);
+    if (explain == false) {
+        plan->result_set->exps = segment->projections;
+        ResultSet_ReplyWithPreamble(plan->result_set, return_columns);
+    }
     // Free current AST segment if it has been constructed here.
     if (ast_segment != ast) {
         AST_Free(ast_segment);
